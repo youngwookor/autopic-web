@@ -407,5 +407,7 @@ export const adminApi = {
     return response.data;
   },
 };
-
+export const generateImages = async (request: GenerateRequest) => {
+  return imagesApi.generate(request);
+};
 export default api;

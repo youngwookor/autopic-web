@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore, useCreditsStore, useGenerationStore } from '@/lib/store';
 import { imagesApi } from '@/lib/api';
@@ -41,7 +41,7 @@ const categoryOptions = [
   '상의', '하의', '원피스', '가방', '신발', '시계', '주얼리', '아이웨어', '모자', '스카프', '벨트', '소품'
 ];
 
-export default function GeneratePage() {
+function GeneratePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAuthenticated } = useAuthStore();
@@ -560,5 +560,13 @@ export default function GeneratePage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function GeneratePage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><Loader2 className="w-8 h-8 animate-spin" /></div>}>
+      <GeneratePageContent />
+    </Suspense>
   );
 }

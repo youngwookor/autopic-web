@@ -134,19 +134,19 @@ export default function Generator() {
     }, 150);
 
     try {
-      const result = await generateImages(
-        mainImage, 
-        mode, 
-        mode === 'model' ? gender : 'auto', 
-        category,
-        modelType  // AI 모델 전달
-      );
+      const result = await generateImages({
+  image_base64: mainImage,
+  mode: mode as 'still' | 'model' | 'editorial_still' | 'editorial_model',
+  model_type: modelType as 'flash' | 'pro',
+  gender: mode === 'model' ? gender : 'auto',
+  category: category,
+});
       
       clearInterval(progressInterval);
       setProgress(100);
 
       if (result.success && result.images.length > 0) {
-        const labels = result.labels || ['정면', '측면', '후면', '디테일'];
+        const labels = (result as any).labels || ['정면', '측면', '후면', '디테일'];
         const images: GeneratedImage[] = result.images.map((img: string, idx: number) => ({
           url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`,
           label: labels[idx] || `이미지 ${idx + 1}`,
@@ -154,7 +154,7 @@ export default function Generator() {
         setGeneratedImages(images);
         setLastResult({
           model: result.model_used || modelType,
-          credit: result.credit_used || (modelType === 'pro' ? 3 : 1),
+          credit: result.credits_used || (modelType === 'pro' ? 3 : 1),
           cost: result.cost_estimate || 0,
         });
         setTimeout(() => setStep('result'), 500);

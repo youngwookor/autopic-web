@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore, useCreditsStore } from '@/lib/store';
@@ -35,7 +35,7 @@ const formatPrice = (price: number) => {
   return new Intl.NumberFormat('ko-KR').format(price);
 };
 
-export default function PricingPage() {
+function PricingPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, isAuthenticated } = useAuthStore();
@@ -395,4 +395,12 @@ function loadTossPayments(clientKey: string): Promise<any> {
     script.onerror = () => reject(new Error('토스페이먼츠 로드 실패'));
     document.head.appendChild(script);
   });
+}
+
+export default function PricingPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen">로딩 중...</div>}>
+      <PricingPageContent />
+    </Suspense>
+  );
 }
