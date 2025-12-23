@@ -9,6 +9,7 @@ import { persist } from 'zustand/middleware';
 interface SimpleUser {
   id: string;
   email: string;
+  is_admin?: boolean;
   name: string;
 }
 
