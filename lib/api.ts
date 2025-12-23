@@ -1,7 +1,8 @@
 // API 클라이언트 설정
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 
 // Axios 인스턴스 생성
 export const api = axios.create({
@@ -196,10 +197,9 @@ export interface DetectCategoryResponse {
 export const imagesApi = {
   // 이미지 생성
   generate: async (request: GenerateRequest) => {
-    const response = await api.post<GenerateResponse>('/images/generate', request);
+    const response = await api.post<GenerateResponse>('/api/generate', request);
     return response.data;
   },
-
   // 카테고리 감지
   detectCategory: async (imageBase64?: string, imageUrl?: string) => {
     const response = await api.post<DetectCategoryResponse>('/images/detect-category', null, {
