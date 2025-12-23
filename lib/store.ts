@@ -11,6 +11,7 @@ interface SimpleUser {
   email: string;
   is_admin?: boolean;
   name: string;
+  tier?: string;
 }
 
 interface SimpleBalance {
