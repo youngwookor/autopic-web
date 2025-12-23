@@ -37,11 +37,9 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       isAuthenticated: false,
       isLoading: false,
-
       setUser: (user) => {
         set({ user, isAuthenticated: !!user });
       },
-
       logout: () => {
         set({ user: null, isAuthenticated: false });
       },
@@ -64,20 +62,36 @@ interface CreditsState {
   // Actions
   setBalance: (credits: number) => void;
   updateBalance: (credits: number) => void;
+  fetchBalance: () => Promise<void>;
 }
 
 export const useCreditsStore = create<CreditsState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       balance: null,
       isLoading: false,
-
       setBalance: (credits) => {
         set({ balance: { credits } });
       },
-
       updateBalance: (credits) => {
         set({ balance: { credits } });
+      },
+      fetchBalance: async () => {
+        const authStore = useAuthStore.getState();
+        if (!authStore.user?.id) return;
+        
+        set({ isLoading: true });
+        try {
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/credits/${authStore.user.id}`);
+          if (response.ok) {
+            const data = await response.json();
+            set({ balance: { credits: data.credits || 0 } });
+          }
+        } catch (error) {
+          console.error('Failed to fetch balance:', error);
+        } finally {
+          set({ isLoading: false });
+        }
       },
     }),
     {
@@ -129,7 +143,6 @@ export const useGenerationStore = create<GenerationState>()((set) => ({
   generatedImages: [],
   isGenerating: false,
   error: null,
-
   setSourceImage: (image, file = null) => set({ sourceImage: image, sourceImageFile: file }),
   setMode: (mode) => set({ mode }),
   setModelType: (modelType) => set({ modelType }),
