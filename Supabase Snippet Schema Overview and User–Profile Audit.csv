@@ -1,0 +1,4 @@
+auth_id,email,auth_name,login_provider,email_confirmed_at,auth_created,last_sign_in_at,profile_id,profile_name,credits,tier,active_api_keys
+d64b31b7-0e1a-4aef-8d8e-e55de40dd052,hirismstore@gmail.com,하이리즘,kakao,2025-12-22 05:09:58.300785+00,2025-12-22 05:09:58.245127+00,2025-12-24 01:19:24.268244+00,d64b31b7-0e1a-4aef-8d8e-e55de40dd052,하이리즘,88,free,0
+fcba404e-8817-41b2-88db-0350da041b7c,hsj0100@gmail.com,남용우,google,2025-12-22 04:42:20.12233+00,2025-12-22 04:42:20.096548+00,2025-12-24 01:19:45.23202+00,fcba404e-8817-41b2-88db-0350da041b7c,남용우,96,free,0
+c49a49ac-6fa7-4d1b-b45e-1895b089873a,hsj01000@gmail.com,null,email,2025-12-20 03:03:07.60973+00,2025-12-20 03:03:07.597681+00,2025-12-23 04:20:57.913765+00,c49a49ac-6fa7-4d1b-b45e-1895b089873a,오토픽,943,free,1
