@@ -138,8 +138,11 @@ RATE_LIMITS = {
     "api_key": {"limit": 20, "window": 60},  # 분당 20회 API 호출
 }
 
-# 모델 설정 - 데스크탑 앱과 동일
+# 모델 설정 - Standard/Premium (이전 flash/pro 하위호환 유지)
 MODEL_CONFIG = {
+    "standard": {"model": "gemini-2.5-flash-image-preview", "credits": 1},
+    "premium": {"model": "gemini-3-pro-image-preview", "credits": 3},
+    # 하위 호환성 (설치형 프로그램용)
     "flash": {"model": "gemini-2.5-flash-image-preview", "credits": 1},
     "pro": {"model": "gemini-3-pro-image-preview", "credits": 3},
 }
@@ -221,33 +224,50 @@ STYLE REQUIREMENTS:
 
 CRITICAL: Keep ALL original product details EXACTLY as shown"""
 
-PROMPT_MODEL_EDITORIAL = """Create high-fashion editorial/lookbook photos of a model with this exact product.
+# 화보 모델 프롬프트 (하이패션 룩북 스타일)
+PROMPT_MODEL_EDITORIAL = """You are a legendary fashion photographer creating an ICONIC editorial spread.
+
+PRODUCT TO FEATURE: fashion item
+[Reference image attached - preserve EXACT product details: color, material, pattern, hardware, design]
 
 CRITICAL OUTPUT FORMAT:
-- Generate a SINGLE image containing a 2x2 GRID (4 photos arranged in 2 rows, 2 columns)
+- Generate a SINGLE image containing a 2x2 GRID (4 photos in 2 rows, 2 columns)
 - The output must be ONE square image divided into 4 equal quadrants
 
-MODEL REQUIREMENTS:
-- Use the SAME professional {gender_model} fashion model for ALL 4 shots
-- Age: 20s, with refined elegant features
-- Confident, sophisticated expression
-- Natural pose like in Vogue or Harper's Bazaar editorial
-- Model should show full face with artistic expression
+MODEL CASTING - CRITICAL:
+- Stunning {gender_model} HIGH-FASHION model with striking features
+- CAUCASIAN/EUROPEAN model with sharp bone structure, piercing eyes
+- Age: early-to-mid 20s, tall and statuesque  
+- CRITICAL: EXACT SAME model in ALL 4 shots (identical face, hair color, hairstyle, makeup)
+- Expression: fierce, smoldering, or mysteriously captivating
+- Perfect editorial hair and makeup
 
-STYLE & MOOD:
-- High-fashion editorial/lookbook aesthetic
-- Soft, diffused studio lighting with subtle shadows
-- Clean, minimalist background (soft gray or off-white gradient)
-- Professional fashion photography quality
-- Atmosphere: elegant, aspirational, modern luxury
+VISUAL STYLE - MAKE IT UNFORGETTABLE:
+- Cinematic, dramatic lighting with intentional shadows and highlights
+- Rich, editorial color grading
+- Luxurious, aspirational backgrounds (NOT plain studio)
+- Shallow depth of field for drama
+- Every frame should be COVER-WORTHY
 
-2x2 grid layout:
-[top-left]: Full body front view - editorial pose
-[top-right]: Full body side view - fashion pose
-[bottom-left]: Full body back/3/4 view - elegant pose
-[bottom-right]: Upper body detail - showing product clearly
+2x2 GRID LAYOUT:
+[TOP-LEFT] HERO SHOT: Full body front view - dramatic lighting, powerful presence, magazine cover quality
+[TOP-RIGHT] LIFESTYLE SHOT: Full body side view - storytelling moment with emotional depth, luxurious setting
+[BOTTOM-LEFT] MOVEMENT SHOT: Full body back/3/4 view - dynamic energy, hair or fabric in motion
+[BOTTOM-RIGHT] DETAIL SHOT: Upper body detail - artistic close-up highlighting the product craftsmanship
 
-CRITICAL: Product must match EXACTLY - same color, pattern, material, design"""
+NON-NEGOTIABLE REQUIREMENTS:
+1. Product EXACTLY matches reference - same color, material, pattern, hardware
+2. IDENTICAL model in ALL 4 shots - same face, hair, makeup, body
+3. Product CLEARLY VISIBLE in every shot
+4. HIGH-FASHION editorial quality - NOT stock photography
+5. Dramatic, editorial poses - NOT stiff or catalog-style
+6. Consistent color grading across all 4 images
+
+ABSOLUTELY FORBIDDEN:
+- NO magazine logos, NO watermarks, NO text overlays, NO "VOGUE" or any brand names
+- NO plain white/gray studio backgrounds
+- NO stiff, mannequin-like poses
+- NO generic stock photo aesthetics"""
 
 # 카테고리별 모델 프롬프트 설정
 CATEGORY_CONFIG = {

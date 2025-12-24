@@ -156,8 +156,8 @@ export default function Pricing() {
                 
                 {/* 크레딧 정보 */}
                 <div className="flex items-center gap-4 text-sm">
-                  <span className="flex items-center gap-1 text-white"><Zap size={14} className="text-yellow-500"/><span className="font-bold">Flash</span> <span className="text-zinc-400">1크레딧</span></span>
-                  <span className="flex items-center gap-1 text-white"><Crown size={14} className="text-purple-500"/><span className="font-bold">Pro</span> <span className="text-zinc-400">3크레딧</span></span>
+                  <span className="flex items-center gap-1 text-white"><Zap size={14} className="text-yellow-500"/><span className="font-bold">Standard</span> <span className="text-zinc-400">1크레딧</span></span>
+                  <span className="flex items-center gap-1 text-white"><Crown size={14} className="text-purple-500"/><span className="font-bold">Premium</span> <span className="text-zinc-400">3크레딧</span></span>
                 </div>
                 
                 {/* 상세 기능 토글 */}
@@ -215,8 +215,8 @@ export default function Pricing() {
                         </div>
                         <div className={`rounded-xl p-3 md:p-4 mb-4 ${(pack.popular || isBest) && isCenter ? 'bg-white/10' : 'bg-zinc-50'}`}>
                           <div className="space-y-1.5 md:space-y-2 text-xs md:text-sm">
-                            <div className="flex items-center justify-between"><span className={`flex items-center gap-1.5 ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}><Zap size={10} /> Flash</span><span className="font-bold">{formatPrice(pack.flashCount)}회</span></div>
-                            <div className="flex items-center justify-between"><span className={`flex items-center gap-1.5 ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}><Crown size={10} /> Pro</span><span className="font-bold">{formatPrice(pack.proCount)}회</span></div>
+                            <div className="flex items-center justify-between"><span className={`flex items-center gap-1.5 ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}><Zap size={10} /> Standard</span><span className="font-bold">{formatPrice(pack.flashCount)}회</span></div>
+                            <div className="flex items-center justify-between"><span className={`flex items-center gap-1.5 ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}><Crown size={10} /> Premium</span><span className="font-bold">{formatPrice(pack.proCount)}회</span></div>
                           </div>
                         </div>
                         <button onClick={(e) => { e.stopPropagation(); handlePayment(pack.id); }} disabled={isLoading && selectedPlan === pack.id} className={`w-full py-3 md:py-3.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${pack.popular && isCenter ? 'bg-[#87D039] text-black hover:bg-[#9AE045]' : isBest && isCenter ? 'bg-yellow-400 text-black hover:bg-yellow-300' : isCenter ? 'bg-zinc-900 text-white hover:bg-black' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}>{isLoading && selectedPlan === pack.id ? '처리 중...' : '구매하기'}</button>
@@ -267,8 +267,8 @@ export default function Pricing() {
                 
                 {/* 크레딧 정보 */}
                 <div className="flex items-center gap-4 text-sm">
-                  <span className="flex items-center gap-1 text-white"><Zap size={14} className="text-yellow-300"/><span className="font-bold">Flash</span> <span className="text-blue-100">1크레딧</span></span>
-                  <span className="flex items-center gap-1 text-white"><Crown size={14} className="text-purple-300"/><span className="font-bold">Pro</span> <span className="text-blue-100">3크레딧</span></span>
+                  <span className="flex items-center gap-1 text-white"><Zap size={14} className="text-yellow-300"/><span className="font-bold">Standard</span> <span className="text-blue-100">1크레딧</span></span>
+                  <span className="flex items-center gap-1 text-white"><Crown size={14} className="text-purple-300"/><span className="font-bold">Premium</span> <span className="text-blue-100">3크레딧</span></span>
                 </div>
                 
                 {/* 상세 기능 토글 */}
@@ -285,7 +285,7 @@ export default function Pricing() {
                 <div className="mt-4 pt-4 border-t border-white/20 grid grid-cols-2 md:grid-cols-5 gap-2 text-[11px]">
                   <div className="flex items-center gap-1.5"><Check size={10} className="text-white" /><span className="text-blue-100">기본/화보 정물 이미지</span></div>
                   <div className="flex items-center gap-1.5"><Check size={10} className="text-white" /><span className="text-blue-100">기본/화보 모델 이미지</span></div>
-                  <div className="flex items-center gap-1.5"><Check size={10} className="text-white" /><span className="text-blue-100">Flash / Pro 모델</span></div>
+                  <div className="flex items-center gap-1.5"><Check size={10} className="text-white" /><span className="text-blue-100">Standard / Premium 모델</span></div>
                   <div className="flex items-center gap-1.5"><X size={10} className="text-blue-200/50" /><span className="text-blue-200/50">대량 일괄 처리</span></div>
                   <div className="flex items-center gap-1.5"><X size={10} className="text-blue-200/50" /><span className="text-blue-200/50">SEO 자동 생성</span></div>
                 </div>
@@ -301,7 +301,7 @@ export default function Pricing() {
             {/* 모바일: 슬라이드 형태 */}
             <div className="md:hidden relative h-[420px] mb-6">
               <div className="absolute inset-0 flex items-center justify-center">
-                {[{ id: 'free', name: 'Free', desc: '체험을 위한 무료 플랜', price: 0, credits: '5 크레딧 (1회 지급)', features: [{ text: '웹에서 결과 미리보기', included: true }, { text: 'Flash / Pro 모델 사용', included: true }, { text: '설치형 프로그램', included: false }, { text: '우선 처리', included: false }], buttonText: '무료로 시작', recommended: false }, { id: 'starter', name: 'Starter', desc: '정기 사용을 위한 구독', price: isAnnual ? 23200 : 29000, credits: '월 100 크레딧 (매월 갱신)', features: [{ text: '웹에서 결과 미리보기', included: true }, { text: 'Flash / Pro 모델 사용', included: true }, { text: '우선 처리', included: true }, { text: '설치형 프로그램', included: false }], buttonText: '구독 시작하기', recommended: true }].map((plan, idx) => {
+                {[{ id: 'free', name: 'Free', desc: '체험을 위한 무료 플랜', price: 0, credits: '5 크레딧 (1회 지급)', features: [{ text: '웹에서 결과 미리보기', included: true }, { text: 'Standard / Premium 모델 사용', included: true }, { text: '설치형 프로그램', included: false }, { text: '우선 처리', included: false }], buttonText: '무료로 시작', recommended: false }, { id: 'starter', name: 'Starter', desc: '정기 사용을 위한 구독', price: isAnnual ? 23200 : 29000, credits: '월 100 크레딧 (매월 갱신)', features: [{ text: '웹에서 결과 미리보기', included: true }, { text: 'Standard / Premium 모델 사용', included: true }, { text: '우선 처리', included: true }, { text: '설치형 프로그램', included: false }], buttonText: '구독 시작하기', recommended: true }].map((plan, idx) => {
                   const subSlide = idx === 0 ? 0 : 1;
                   const diff = idx - (currentSlide > 1 ? 1 : currentSlide === 0 ? 0 : 1);
                   const isCenter = idx === 1;
@@ -348,7 +348,7 @@ export default function Pricing() {
                 <div className="rounded-xl p-3 md:p-4 mb-4 md:mb-6 bg-zinc-50 flex-1">
                   <div className="space-y-1.5 md:space-y-2 text-xs md:text-sm">
                     <div className="flex items-center gap-2"><Check size={12} className="text-[#87D039]" /><span className="text-zinc-700">웹에서 결과 미리보기</span></div>
-                    <div className="flex items-center gap-2"><Check size={12} className="text-[#87D039]" /><span className="text-zinc-700">Flash / Pro 모델 사용</span></div>
+                    <div className="flex items-center gap-2"><Check size={12} className="text-[#87D039]" /><span className="text-zinc-700">Standard / Premium 모델 사용</span></div>
                     <div className="flex items-center gap-2"><X size={12} className="text-zinc-300" /><span className="text-zinc-400">설치형 프로그램</span></div>
                     <div className="flex items-center gap-2"><X size={12} className="text-zinc-300" /><span className="text-zinc-400">우선 처리</span></div>
                   </div>
@@ -362,7 +362,7 @@ export default function Pricing() {
                 <div className="rounded-xl p-3 md:p-4 mb-4 md:mb-6 bg-white/10 flex-1">
                   <div className="space-y-1.5 md:space-y-2 text-xs md:text-sm">
                     <div className="flex items-center gap-2"><Check size={12} className="text-[#87D039]" /><span className="text-white">웹에서 결과 미리보기</span></div>
-                    <div className="flex items-center gap-2"><Check size={12} className="text-[#87D039]" /><span className="text-white">Flash / Pro 모델 사용</span></div>
+                    <div className="flex items-center gap-2"><Check size={12} className="text-[#87D039]" /><span className="text-white">Standard / Premium 모델 사용</span></div>
                     <div className="flex items-center gap-2"><Check size={12} className="text-[#87D039]" /><span className="text-white">우선 처리</span></div>
                     <div className="flex items-center gap-2"><X size={12} className="text-blue-200/50" /><span className="text-blue-200/50">설치형 프로그램</span></div>
                   </div>

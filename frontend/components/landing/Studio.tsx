@@ -23,10 +23,10 @@ import toast from 'react-hot-toast';
 import Link from 'next/link';
 import JSZip from 'jszip';
 
-// 모델 설정
+// 모델 설정 - Standard/Premium
 const MODEL_CONFIG = {
-  flash: { credits: 1 },
-  pro: { credits: 3 },
+  standard: { credits: 1 },
+  premium: { credits: 3 },
 };
 
 // 백엔드 API URL
@@ -45,7 +45,7 @@ export default function Studio() {
   // 생성 옵션: 주체(정물/인물) + 스타일(일반/화보)
   const [subject, setSubject] = useState<'product' | 'model'>('product');
   const [style, setStyle] = useState<'basic' | 'editorial'>('basic');
-  const [modelType, setModelType] = useState<'flash' | 'pro'>('pro');
+  const [modelType, setModelType] = useState<'standard' | 'premium'>('premium');
   const [gender, setGender] = useState<'female' | 'male'>('female');
   
   const [isGenerating, setIsGenerating] = useState(false);
@@ -357,26 +357,26 @@ export default function Studio() {
                     <label className="text-xs md:text-sm font-medium text-zinc-600 mb-1.5 md:mb-2 block">AI 모델</label>
                     <div className="grid grid-cols-2 gap-2 md:gap-3">
                       <button 
-                        onClick={() => setModelType('flash')} 
+                        onClick={() => setModelType('standard')} 
                         className={`py-2 md:py-2.5 px-3 md:px-4 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 md:gap-2 border ${
-                          modelType === 'flash' 
+                          modelType === 'standard' 
                             ? 'bg-zinc-900 text-white border-zinc-900' 
                             : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'
                         }`}
                       >
                         <Zap size={12} className="md:w-3.5 md:h-3.5" />
-                        Flash · 1크레딧
+                        Standard · 1크레딧
                       </button>
                       <button 
-                        onClick={() => setModelType('pro')} 
+                        onClick={() => setModelType('premium')} 
                         className={`py-2 md:py-2.5 px-3 md:px-4 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 md:gap-2 border ${
-                          modelType === 'pro' 
+                          modelType === 'premium' 
                             ? 'bg-zinc-900 text-white border-zinc-900' 
                             : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'
                         }`}
                       >
                         <Crown size={12} className="md:w-3.5 md:h-3.5" />
-                        Pro · 3크레딧
+                        Premium · 3크레딧
                       </button>
                     </div>
                   </div>
