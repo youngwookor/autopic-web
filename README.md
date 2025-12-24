@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Autopic Web
 
-## Getting Started
+AI 기반 이커머스 상품 이미지 생성 서비스
 
-First, run the development server:
+## 구조
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+autopic-web/
+├── frontend/          # Next.js 프론트엔드 (Vercel 배포)
+├── backend/           # FastAPI 백엔드 (AWS Lightsail)
+└── README.md
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 프론트엔드 (frontend/)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **프레임워크**: Next.js 14
+- **배포**: Vercel
+- **URL**: https://autopic-web.vercel.app
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 백엔드 (backend/)
 
-## Learn More
+- **프레임워크**: FastAPI
+- **배포**: AWS Lightsail
+- **URL**: http://43.200.229.169:8000
 
-To learn more about Next.js, take a look at the following resources:
+## 데이터베이스
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Supabase** (PostgreSQL)
+- 테이블: profiles, api_keys, payments, generations, usages
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 환경변수
 
-## Deploy on Vercel
+### Frontend (.env.local)
+```
+NEXT_PUBLIC_API_URL=/backend
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+NEXT_PUBLIC_TOSS_CLIENT_KEY=your_toss_key
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Backend (.env)
+```
+GEMINI_API_KEYS=key1,key2
+SUPABASE_URL=your_supabase_url
+SUPABASE_SERVICE_KEY=your_service_key
+TOSS_SECRET_KEY=your_toss_secret
+```
