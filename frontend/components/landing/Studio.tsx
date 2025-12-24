@@ -515,7 +515,7 @@ export default function Studio() {
                       ) : (
                         <Package size={12} className="md:w-3.5 md:h-3.5" />
                       )}
-                      {isDownloading ? '압축 중...' : 'ZIP 다운로드'}
+                      {isDownloading ? '압축 중...' : '전체 다운로드'}
                     </button>
                   )}
                 </div>
