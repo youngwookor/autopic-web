@@ -1059,6 +1059,7 @@ async def desktop_get_credits(x_api_key: str = Header(None, alias="X-API-Key")):
 class AnalyzeRequest(BaseModel):
     image_base64: str
     product_name: str = ""
+    text_content: str = ""  # 텍스트 파일 내용
     business_type: str = "luxury"  # luxury / fashion
     categories: Dict[str, List[str]] = {}  # 사용자 등록 카테고리
     brands: List[str] = []  # 사용자 등록 브랜드
@@ -1103,7 +1104,7 @@ BRAND_KR_MAP = {
 }
 
 
-def build_analyze_prompt(business_type: str, categories: dict, brands: list) -> str:
+def build_analyze_prompt(business_type: str, categories: dict, brands: list, text_content: str = "") -> str:
     """분석 프롬프트 생성 (명품/일반 구분)"""
 
     # 카테고리 문자열 생성
@@ -1122,9 +1123,14 @@ def build_analyze_prompt(business_type: str, categories: dict, brands: list) -> 
 - 신발: 스니커즈, 로퍼, 부츠, 샌들, 힐
 - 액세서리: 벨트, 스카프, 모자, 주얼리, 선글라스"""
 
+    # 텍스트 파일 내용이 있으면 추가
+    text_section = ""
+    if text_content:
+        text_section = f"\n\n참고 텍스트 정보:\n{text_content[:1000]}\n"
+
     if business_type == "luxury":
         brand_str = ", ".join(brands) if brands else "자동 감지"
-        return f"""이 상품의 정보를 분석해주세요.
+        return f"""이 상품의 정보를 분석해주세요.{text_section}
 
 **중요: 아래 목록에 있는 카테고리만 사용하세요!**
 
@@ -1146,6 +1152,25 @@ GENDER: (여성/남성/공용)
 - 더블G 레더 토트백"""
     else:
         return f"""이 상품의 정보를 분석해주세요.
+
+**중요: 아래 목록에 있는 카테고리만 사용하세요!**
+
+사용 가능한 카테고리:
+{category_str}
+
+다음 형식으로만 응답해주세요:
+CATEGORY1: (위 목록의 1차 카테고리만 사용)
+CATEGORY2: (위 목록의 2차 카테고리만 사용)
+PRODUCT_KEYWORD: (세련된 상품 키워드 - 1차카테고리 제외)
+GENDER: (여성/남성/공용)
+
+예시:
+- 코튼 오버핏 후드 티셔츠
+- 레더 미니 크로스백"""
+
+    # 일반 모드에도 텍스트 섹션 추가
+    else:
+        return f"""이 상품의 정보를 분석해주세요.{text_section}
 
 **중요: 아래 목록에 있는 카테고리만 사용하세요!**
 
@@ -1289,9 +1314,9 @@ async def analyze_product(
         raise HTTPException(status_code=401, detail="유효하지 않은 API 키입니다")
 
     try:
-        # 1단계: 이미지 분석
+        # 1단계: 이미지 분석 (텍스트 내용 포함)
         analyze_prompt = build_analyze_prompt(
-            request.business_type, request.categories, request.brands
+            request.business_type, request.categories, request.brands, request.text_content
         )
 
         response_text = await call_claude_api_text(analyze_prompt, request.image_base64)
