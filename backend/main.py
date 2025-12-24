@@ -1104,7 +1104,9 @@ BRAND_KR_MAP = {
 }
 
 
-def build_analyze_prompt(business_type: str, categories: dict, brands: list, text_content: str = "") -> str:
+def build_analyze_prompt(
+    business_type: str, categories: dict, brands: list, text_content: str = ""
+) -> str:
     """분석 프롬프트 생성 (명품/일반 구분)"""
 
     # 카테고리 문자열 생성
@@ -1230,58 +1232,80 @@ def parse_analyze_response(response: str, business_type: str) -> dict:
     return result
 
 
-async def call_claude_api_text(prompt: str, image_base64: str = None) -> str:
-    """Claude API 호출 - 텍스트 반환"""
+async def call_claude_api_text(
+    prompt: str, image_base64: str = None, max_retries: int = 3
+) -> str:
+    """Claude API 호출 - 텍스트 반환 (재시도 포함)"""
     if not CLAUDE_API_KEY:
         return ""
 
-    try:
-        headers = {
-            "x-api-key": CLAUDE_API_KEY,
-            "content-type": "application/json",
-            "anthropic-version": "2023-06-01",
-        }
+    for attempt in range(max_retries):
+        try:
+            headers = {
+                "x-api-key": CLAUDE_API_KEY,
+                "content-type": "application/json",
+                "anthropic-version": "2023-06-01",
+            }
 
-        if image_base64:
-            if "," in image_base64:
-                image_base64 = image_base64.split(",")[1]
-            content = [
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "image/jpeg",
-                        "data": image_base64,
+            if image_base64:
+                if "," in image_base64:
+                    image_base64 = image_base64.split(",")[1]
+                content = [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/jpeg",
+                            "data": image_base64,
+                        },
                     },
-                },
-                {"type": "text", "text": prompt},
-            ]
-        else:
-            content = [{"type": "text", "text": prompt}]
+                    {"type": "text", "text": prompt},
+                ]
+            else:
+                content = [{"type": "text", "text": prompt}]
 
-        body = {
-            "model": "claude-sonnet-4-20250514",
-            "max_tokens": 1024,
-            "messages": [{"role": "user", "content": content}],
-        }
+            body = {
+                "model": "claude-sonnet-4-20250514",
+                "max_tokens": 1024,
+                "messages": [{"role": "user", "content": content}],
+            }
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                "https://api.anthropic.com/v1/messages", headers=headers, json=body
-            )
+            async with httpx.AsyncClient(timeout=90.0) as client:  # 60→90초
+                response = await client.post(
+                    "https://api.anthropic.com/v1/messages", headers=headers, json=body
+                )
 
-        if response.status_code != 200:
+            if response.status_code == 200:
+                data = response.json()
+                result = data.get("content", [{}])[0].get("text", "")
+                if result:
+                    return result
+
+            # 429 (Rate Limit) 또는 500 에러 시 재시도
+            if response.status_code in [429, 500, 502, 503]:
+                print(
+                    f"Claude API 재시도 {attempt + 1}/{max_retries} (상태: {response.status_code})"
+                )
+                await asyncio.sleep(2**attempt)  # 지수 백오프: 1초, 2초, 4초
+                continue
+
+            print(f"Claude API 오류: {response.status_code}")
             return ""
 
-        data = response.json()
-        return data.get("content", [{}])[0].get("text", "")
+        except httpx.TimeoutException:
+            print(f"Claude API 타임아웃 재시도 {attempt + 1}/{max_retries}")
+            await asyncio.sleep(2**attempt)
+            continue
+        except Exception as e:
+            print(f"Claude API 오류: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2**attempt)
+                continue
+            return ""
 
-    except Exception as e:
-        print(f"Claude API 오류: {e}")
-        return ""
+    return ""
 
 
-@app.post("/api/v1/analyze", response_model=AnalyzeResponse)
 async def analyze_product(
     request: AnalyzeRequest, x_api_key: str = Header(None, alias="X-API-Key")
 ):
@@ -1297,7 +1321,10 @@ async def analyze_product(
     try:
         # 1단계: 이미지 분석 (텍스트 내용 포함)
         analyze_prompt = build_analyze_prompt(
-            request.business_type, request.categories, request.brands, request.text_content
+            request.business_type,
+            request.categories,
+            request.brands,
+            request.text_content,
         )
 
         response_text = await call_claude_api_text(analyze_prompt, request.image_base64)

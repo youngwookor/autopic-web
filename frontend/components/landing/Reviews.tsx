@@ -1,8 +1,29 @@
 'use client';
 
 import { Star } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
 
 export default function Reviews() {
+  const [isVisible, setIsVisible] = useState(false);
+  const sectionRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+        }
+      },
+      { threshold: 0.2 }
+    );
+
+    if (sectionRef.current) {
+      observer.observe(sectionRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
+
   const reviews = [
     { 
       name: "김민준 대표", 
@@ -22,9 +43,13 @@ export default function Reviews() {
   ];
 
   return (
-    <section id="reviews" className="py-16 md:py-32 bg-white overflow-hidden">
+    <section id="reviews" ref={sectionRef} className="py-16 md:py-32 bg-white overflow-hidden">
       <div className="max-w-[1600px] mx-auto px-4 md:px-6">
-        <div className="flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-4 mb-10 md:mb-16">
+        <div 
+          className={`flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-4 mb-10 md:mb-16 transition-all duration-700 ${
+            isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+          }`}
+        >
           <div className="w-10 h-10 md:w-12 md:h-12 bg-black text-white rounded-full flex items-center justify-center font-bold text-lg md:text-xl">
             4.9
           </div>
@@ -35,7 +60,10 @@ export default function Reviews() {
           {reviews.map((review, i) => (
             <div 
               key={i} 
-              className="min-w-[280px] md:min-w-0 bg-zinc-50 p-6 md:p-10 rounded-2xl md:rounded-[32px] border border-zinc-100 hover:shadow-xl transition-shadow flex flex-col justify-between"
+              className={`min-w-[280px] md:min-w-0 bg-zinc-50 p-6 md:p-10 rounded-2xl md:rounded-[32px] border border-zinc-100 hover:shadow-xl transition-all duration-700 flex flex-col justify-between ${
+                isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'
+              }`}
+              style={{ transitionDelay: `${(i + 1) * 150}ms` }}
             >
               <div>
                 <div className="flex gap-0.5 md:gap-1 text-black mb-4 md:mb-6">

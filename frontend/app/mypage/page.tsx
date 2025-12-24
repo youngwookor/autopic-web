@@ -42,7 +42,7 @@ interface ApiKey {
 
 export default function MyPage() {
   const router = useRouter();
-  const { user, isAuthenticated, logout } = useAuthStore();
+  const { user, isAuthenticated, setUser, logout: storeLogout } = useAuthStore();
   const { balance, setBalance } = useCreditsStore();
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [generations, setGenerations] = useState<Generation[]>([]);
@@ -50,30 +50,72 @@ export default function MyPage() {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [authChecked, setAuthChecked] = useState(false);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+  // 세션 체크 및 데이터 로드 - 단순화
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
-      return;
-    }
-    loadData();
-  }, [isAuthenticated, router]);
+    let isMounted = true;
 
-  const loadData = async () => {
+    const checkAuth = async () => {
+      try {
+        // Supabase에서 직접 세션 확인
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        console.log('MyPage session check:', { session: !!session, error });
+        
+        if (!isMounted) return;
+
+        if (error || !session) {
+          console.log('No session, redirecting...');
+          router.replace('/login');
+          return;
+        }
+
+        // 세션이 있으면 Store도 업데이트
+        if (session.user) {
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+
+          if (profileData && isMounted) {
+            // Store 동기화
+            setUser({
+              id: session.user.id,
+              email: session.user.email || '',
+              name: profileData.name || '',
+            });
+            setBalance(profileData.credits || 0);
+            setProfile(profileData);
+          }
+        }
+
+        setAuthChecked(true);
+        
+        // 나머지 데이터 로드
+        if (session.user && isMounted) {
+          await loadData(session.user.id);
+        }
+      } catch (error) {
+        console.error('Auth check error:', error);
+        if (isMounted) {
+          router.replace('/login');
+        }
+      }
+    };
+
+    checkAuth();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router, setUser, setBalance]);
+
+  const loadData = async (userId: string) => {
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) return;
-
-      // 프로필 로드
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authUser.id)
-        .single();
-      setProfile(profileData);
-
       // 생성 내역 로드 (최근 30일)
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -81,7 +123,7 @@ export default function MyPage() {
       const { data: generationsData } = await supabase
         .from('generations')
         .select('*')
-        .eq('user_id', authUser.id)
+        .eq('user_id', userId)
         .gte('created_at', thirtyDaysAgo.toISOString())
         .order('created_at', { ascending: false });
       setGenerations(generationsData || []);
@@ -90,14 +132,14 @@ export default function MyPage() {
       const { data: usagesData } = await supabase
         .from('usages')
         .select('*')
-        .eq('user_id', authUser.id)
+        .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(50);
       setUsages(usagesData || []);
 
       // API 키 로드
       try {
-        const keysResponse = await fetch(`${API_URL}/api/keys/${authUser.id}`);
+        const keysResponse = await fetch(`${API_URL}/api/keys/${userId}`);
         if (keysResponse.ok) {
           const keysData = await keysResponse.json();
           setApiKeys(keysData.keys || []);
@@ -115,19 +157,21 @@ export default function MyPage() {
 
   const handleLogout = async () => {
     try {
-      await signOut(); // Supabase 로그아웃
-      logout(); // Store 초기화
-      setBalance(0); // 크레딧 초기화
-      
-      // localStorage 완전 초기화
-      localStorage.removeItem('auth-storage');
-      localStorage.removeItem('credits-storage');
-      
+      await signOut();
+      storeLogout();
+      setBalance(0);
       toast.success('로그아웃 되었습니다');
-      router.push('/');
+      router.replace('/');
     } catch (error) {
       console.error('Logout error:', error);
-      toast.error('로그아웃 중 오류가 발생했습니다');
+      // 에러가 나도 강제 로그아웃 처리
+      storeLogout();
+      setBalance(0);
+      if (typeof window !== 'undefined') {
+        localStorage.clear();
+      }
+      toast.success('로그아웃 되었습니다');
+      router.replace('/');
     }
   };
 
@@ -145,14 +189,17 @@ export default function MyPage() {
   const getModeName = (mode: string) => {
     const modes: Record<string, string> = {
       'still': '스틸컷',
+      'product': '정물',
       'model': '모델컷',
       'editorial_still': '에디토리얼 스틸',
-      'editorial_model': '에디토리얼 모델'
+      'editorial_product': '화보 정물',
+      'editorial_model': '화보 모델'
     };
     return modes[mode] || mode;
   };
 
-  if (loading) {
+  // 인증 확인 전 또는 로딩 중
+  if (!authChecked || loading) {
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-[#87D039] border-t-transparent rounded-full animate-spin"></div>
@@ -222,11 +269,11 @@ export default function MyPage() {
             <div className="bg-white rounded-2xl md:rounded-3xl border border-zinc-200 p-6 md:p-8">
               <div className="flex items-center gap-4 mb-6">
                 <div className="w-16 h-16 md:w-20 md:h-20 bg-gradient-to-br from-[#87D039] to-[#6BBF2A] rounded-full flex items-center justify-center text-white text-2xl md:text-3xl font-bold">
-                  {(profile?.name || user?.email)?.[0]?.toUpperCase()}
+                  {(profile?.name || user?.email)?.[0]?.toUpperCase() || 'U'}
                 </div>
                 <div>
                   <h2 className="text-xl md:text-2xl font-bold">{profile?.name || '사용자'}</h2>
-                  <p className="text-zinc-500 text-sm md:text-base">{user?.email}</p>
+                  <p className="text-zinc-500 text-sm md:text-base">{user?.email || profile?.email}</p>
                 </div>
               </div>
               
@@ -503,7 +550,7 @@ export default function MyPage() {
                   <label className="block text-sm font-medium text-zinc-700 mb-2">이메일</label>
                   <input
                     type="email"
-                    value={user?.email || ''}
+                    value={user?.email || profile?.email || ''}
                     disabled
                     className="w-full px-4 py-3 rounded-xl border border-zinc-200 bg-zinc-50 text-zinc-500"
                   />

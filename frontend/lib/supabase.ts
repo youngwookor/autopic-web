@@ -3,17 +3,27 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// 세션 지속성 및 자동 갱신 옵션 추가
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storageKey: 'autopic-auth',
+  },
+});
 
 // ============================================
 // 인증 함수
 // ============================================
 
-export async function signUp(email: string, password: string, name?: string) {
+export async function signUp(email: string, password: string, name?: string, phone?: string) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { name } }
+    options: { 
+      data: { name, phone }
+    }
   });
   if (error) throw error;
   return data;
@@ -35,7 +45,7 @@ export async function signInWithGoogle() {
       redirectTo: `${window.location.origin}/auth/callback`,
       queryParams: {
         access_type: 'offline',
-        prompt: 'consent',
+        prompt: 'select_account',  // 'consent' → 'select_account'로 변경 (매번 동의 요청 X)
       },
     },
   });
@@ -56,13 +66,27 @@ export async function signInWithKakao() {
 }
 
 export async function signOut() {
-  const { error } = await supabase.auth.signOut();
+  // 로컬 스토리지 클리어
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('autopic-auth');
+    localStorage.removeItem('auth-storage');
+    localStorage.removeItem('credits-storage');
+  }
+  
+  const { error } = await supabase.auth.signOut({ scope: 'global' });
   if (error) throw error;
 }
 
 export async function getUser() {
   const { data: { user } } = await supabase.auth.getUser();
   return user;
+}
+
+export async function resetPassword(email: string) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/auth/reset-password`,
+  });
+  if (error) throw error;
 }
 
 // ============================================
@@ -77,6 +101,14 @@ export async function getProfile(userId: string) {
     .single();
   if (error) throw error;
   return data;
+}
+
+export async function updateProfile(userId: string, updates: { name?: string; phone?: string }) {
+  const { error } = await supabase
+    .from('profiles')
+    .update(updates)
+    .eq('id', userId);
+  if (error) throw error;
 }
 
 export async function updateCredits(userId: string, creditsToDeduct: number) {
@@ -117,7 +149,7 @@ export async function addCredits(userId: string, credits: number, paymentKey?: s
   if (paymentKey) {
     await supabase.from('payments').insert({
       user_id: userId,
-      amount: credits * 100, // 예시 금액
+      amount: credits * 100,
       credits: credits,
       payment_key: paymentKey
     });
