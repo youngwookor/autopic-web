@@ -12,6 +12,7 @@ import uuid
 import httpx
 import secrets
 import hashlib
+import asyncio
 from datetime import datetime
 from typing import Optional, List, Dict
 from collections import defaultdict
@@ -1326,6 +1327,7 @@ async def call_claude_api_text(
     return ""
 
 
+@app.post("/api/v1/analyze", response_model=AnalyzeResponse)
 async def analyze_product(
     request: AnalyzeRequest, x_api_key: str = Header(None, alias="X-API-Key")
 ):
