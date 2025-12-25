@@ -7,6 +7,7 @@ AI 이미지 생성 + 결제 API 서버
 기존 processor.py, editorial_image_generator_v3.py와 100% 동일한 프롬프트/성별 처리
 + 확장 카테고리 지원 (키즈, 펫용품, 뷰티, 스포츠)
 + 한글/영문 카테고리 모두 지원
++ TARGET 자동 감지 (사람/아동/반려동물)
 """
 
 import os
@@ -37,7 +38,7 @@ from google import genai
 from google.genai import types
 
 app = FastAPI(
-    title="Autopic API", description="AI 상품 이미지 생성 + 결제 API", version="1.1.0"
+    title="Autopic API", description="AI 상품 이미지 생성 + 결제 API", version="1.2.0"
 )
 
 # CORS 설정
@@ -249,29 +250,41 @@ CATEGORY_EN_TO_GROUP = {
     "sports": "스포츠",
 }
 
+# TARGET → 카테고리 그룹 매핑
+TARGET_TO_CATEGORY_GROUP = {
+    "반려동물": "펫용품",
+    "아동": "키즈",
+    "사람": None,  # None이면 기존 카테고리 유지
+}
 
-def get_category_group(category1: str, category2: str = "") -> str:
-    """카테고리 그룹 결정 (한글/영문 모두 지원)"""
+
+def get_category_group(category1: str, category2: str = "", target: str = "사람") -> str:
+    """카테고리 그룹 결정 (한글/영문 모두 지원 + TARGET 기반 오버라이드)"""
+    
+    # 1. TARGET 기반 오버라이드 (최우선)
+    if target in TARGET_TO_CATEGORY_GROUP and TARGET_TO_CATEGORY_GROUP[target]:
+        return TARGET_TO_CATEGORY_GROUP[target]
+    
     category1 = str(category1).strip("[]") if category1 else ""
     category2 = str(category2).strip("[]") if category2 else ""
     
-    # 1. 영문 카테고리 체크
+    # 2. 영문 카테고리 체크
     if category1.lower() in CATEGORY_EN_TO_GROUP:
         return CATEGORY_EN_TO_GROUP[category1.lower()]
     
-    # 2. 한글 1차 카테고리 체크
+    # 3. 한글 1차 카테고리 체크
     if category1 in CATEGORY1_TO_GROUP:
         return CATEGORY1_TO_GROUP[category1]
     
-    # 3. 한글 2차 카테고리 체크
+    # 4. 한글 2차 카테고리 체크
     if category2 in CATEGORY2_TO_GROUP:
         return CATEGORY2_TO_GROUP[category2]
     
-    # 4. 영문 2차 카테고리 체크
+    # 5. 영문 2차 카테고리 체크
     if category2.lower() in CATEGORY_EN_TO_GROUP:
         return CATEGORY_EN_TO_GROUP[category2.lower()]
     
-    # 5. 기본값
+    # 6. 기본값
     return "의류"
 
 
@@ -398,12 +411,12 @@ CATEGORY_MODEL_CONFIG = {
     },
     "펫용품": {
         "name_en": "pet product/accessory",
-        "pose_front": "Adult model WITH cute pet (dog or cat) wearing/using the product, FRONT view - warm interaction",
-        "pose_side": "Model and pet together, SIDE view - showing product clearly on pet",
-        "pose_back": "Focus on pet wearing product, 3/4 ANGLE view - pet looking adorable",
+        "pose_front": "Cute pet (dog or cat) wearing/using the product, FRONT view - adorable expression",
+        "pose_side": "Pet wearing product, SIDE view - showing product clearly on pet",
+        "pose_back": "Pet wearing product, 3/4 ANGLE view - pet looking adorable",
         "pose_detail": "Close-up DETAIL of product ON THE PET - showing quality and design",
-        "size_note": "Include a cute, well-groomed pet (dog or cat). Pet should be the focus.",
-        "special_instruction": "CRITICAL: Must include a real-looking pet. Warm, loving atmosphere. Pet must wear/use the product visibly.",
+        "size_note": "Use a cute, well-groomed pet (dog or cat). Pet should be the main focus.",
+        "special_instruction": "CRITICAL: The product must be worn BY THE PET, not by a human. Show a cute dog or cat wearing/using the product. Warm, loving atmosphere.",
     },
     "뷰티": {
         "name_en": "beauty/cosmetic product",
@@ -465,9 +478,9 @@ STYLE REQUIREMENTS:
 CRITICAL: Keep ALL original product details EXACTLY as shown"""
 
 
-def build_model_prompt(category: str, gender: str) -> str:
+def build_model_prompt(category: str, gender: str, target: str = "사람") -> str:
     """카테고리별 기본 모델 프롬프트 생성 (공홈 스타일)"""
-    category_group = get_category_group(category, "")
+    category_group = get_category_group(category, "", target)
     config = CATEGORY_MODEL_CONFIG.get(category_group, CATEGORY_MODEL_CONFIG["의류"])
     gender_model = convert_gender_to_model(gender)
     
@@ -509,9 +522,9 @@ CRITICAL:
     )
 
 
-def build_editorial_model_prompt(category: str, gender: str) -> str:
+def build_editorial_model_prompt(category: str, gender: str, target: str = "사람") -> str:
     """카테고리별 화보 모델 프롬프트 생성 (에디토리얼 스타일)"""
-    category_group = get_category_group(category, "")
+    category_group = get_category_group(category, "", target)
     config = CATEGORY_MODEL_CONFIG.get(category_group, CATEGORY_MODEL_CONFIG["의류"])
     gender_model = convert_gender_to_model(gender)
     
@@ -547,24 +560,24 @@ VISUAL STYLE:
 CRITICAL: Product must match EXACTLY. Same child model in ALL shots."""
     
     elif category_group == "펫용품":
-        return f"""Create heartwarming editorial photos featuring a model with their pet using this exact {config['name_en']}.
+        return f"""Create adorable pet photos featuring a cute pet wearing/using this exact {config['name_en']}.
 
 CRITICAL OUTPUT FORMAT:
 - Generate a SINGLE image containing a 2x2 GRID (4 photos in 2 rows, 2 columns)
 - The output must be ONE square image divided into 4 equal quadrants
 
-MODEL: Adult {gender_model} model with cute, well-groomed pet (dog or cat)
-- Same model and SAME pet in ALL 4 shots
-- Warm, loving interaction between model and pet
-- Pet must be wearing/using the product
+SUBJECT: Cute, well-groomed PET (dog or cat) - NOT a human model
+- Same pet in ALL 4 shots
+- Pet must be WEARING or USING the product
+- Adorable, photogenic pet with expressive eyes
 
 {config['size_note']}
 
 VISUAL STYLE:
 - Warm, cozy atmosphere
 - Soft natural lighting
-- Home or outdoor setting
-- Loving, caring mood
+- Home or outdoor setting (living room, garden, park)
+- Loving, heartwarming mood
 
 2x2 GRID LAYOUT:
 [TOP-LEFT]: {config['pose_front']}
@@ -574,7 +587,10 @@ VISUAL STYLE:
 
 {config['special_instruction']}
 
-CRITICAL: Product must match EXACTLY. Same model AND same pet in ALL shots."""
+ABSOLUTELY CRITICAL: 
+- The product must be worn BY THE PET (dog or cat), NOT by a human
+- Do NOT show any human wearing pet clothes
+- Same pet in ALL 4 shots"""
     
     elif category_group == "뷰티":
         return f"""Create luxurious beauty editorial photos featuring a model with this exact {config['name_en']}.
@@ -718,6 +734,7 @@ class GenerateRequest(BaseModel):
     model_type: str = "flash"
     gender: str = "female"
     category: str = "clothing"
+    target: str = "사람"  # 사람/아동/반려동물
 
 
 class GenerateResponse(BaseModel):
@@ -928,7 +945,7 @@ async def save_generation(
 
 @app.get("/")
 async def root():
-    return {"message": "Autopic API", "version": "1.1.0", "categories": list(CATEGORY_MODEL_CONFIG.keys())}
+    return {"message": "Autopic API", "version": "1.2.0", "categories": list(CATEGORY_MODEL_CONFIG.keys())}
 
 
 @app.get("/health")
@@ -944,10 +961,10 @@ async def get_credits(user_id: str):
 
 @app.get("/api/categories")
 async def get_categories():
-    """지원 카테고리 목록 반환"""
     return {
         "categories": list(CATEGORY_MODEL_CONFIG.keys()),
         "category_en": list(CATEGORY_EN_TO_GROUP.keys()),
+        "targets": ["사람", "아동", "반려동물"],
     }
 
 
@@ -975,13 +992,13 @@ async def generate_image(request: GenerateRequest):
     try:
         processed_image = process_image(request.image_base64)
 
-        # 프롬프트 선택
+        # 프롬프트 선택 (TARGET 기반 카테고리 오버라이드 적용)
         if request.mode == "model":
-            prompt = build_model_prompt(request.category, request.gender)
+            prompt = build_model_prompt(request.category, request.gender, request.target)
         elif request.mode == "editorial_product":
             prompt = PROMPT_PRODUCT_EDITORIAL
         elif request.mode == "editorial_model":
-            prompt = build_editorial_model_prompt(request.category, request.gender)
+            prompt = build_editorial_model_prompt(request.category, request.gender, request.target)
         else:
             prompt = PROMPT_PRODUCT
 
@@ -1306,6 +1323,7 @@ class DesktopGenerateRequest(BaseModel):
     model_type: str = "flash"
     gender: str = "female"
     category: str = "clothing"
+    target: str = "사람"
 
 
 @app.post("/api/v1/generate")
@@ -1338,6 +1356,7 @@ async def desktop_generate_image(
         model_type=request.model_type,
         gender=request.gender,
         category=request.category,
+        target=request.target,
     )
 
     return await generate_image(gen_request)
@@ -1387,6 +1406,7 @@ class AnalyzeResponse(BaseModel):
     product_name: str = ""
     product_keyword: str = ""
     gender: str = ""
+    target: str = "사람"
     seo_title: str = ""
     seo_description: str = ""
     seo_keywords: str = ""
@@ -1460,6 +1480,12 @@ CATEGORY1: (위 목록의 1차 카테고리만 사용)
 CATEGORY2: (위 목록의 2차 카테고리만 사용)
 PRODUCT_KEYWORD: (세련된 상품 키워드 - 브랜드명, 1차카테고리 제외)
 GENDER: (여성/남성/공용)
+TARGET: (이 상품의 착용/사용 대상 - 사람/아동/반려동물 중 하나만 선택)
+
+TARGET 판단 기준:
+- 반려동물: 강아지옷, 고양이옷, 펫용품, 목줄, 하네스 등 동물용 제품 (사이즈가 매우 작고 동물 전용 디자인)
+- 아동: 아동복, 유아복, 키즈용품 등 어린이용 제품 (사이즈가 작은 아동용)
+- 사람: 일반 성인용 의류, 가방, 신발, 액세서리 등
 
 예시:
 - 체인 자수 스웨트셔츠
@@ -1477,6 +1503,12 @@ CATEGORY1: (위 목록의 1차 카테고리만 사용)
 CATEGORY2: (위 목록의 2차 카테고리만 사용)
 PRODUCT_KEYWORD: (세련된 상품 키워드 - 1차카테고리 제외)
 GENDER: (여성/남성/공용)
+TARGET: (이 상품의 착용/사용 대상 - 사람/아동/반려동물 중 하나만 선택)
+
+TARGET 판단 기준:
+- 반려동물: 강아지옷, 고양이옷, 펫용품, 목줄, 하네스 등 동물용 제품 (사이즈가 매우 작고 동물 전용 디자인)
+- 아동: 아동복, 유아복, 키즈용품 등 어린이용 제품 (사이즈가 작은 아동용)
+- 사람: 일반 성인용 의류, 가방, 신발, 액세서리 등
 
 예시:
 - 코튼 오버핏 후드 티셔츠
@@ -1510,6 +1542,7 @@ def parse_analyze_response(response: str, business_type: str) -> dict:
         "category2": "",
         "product_keyword": "",
         "gender": "공용",
+        "target": "사람",
     }
 
     for line in response.strip().split("\n"):
@@ -1529,6 +1562,10 @@ def parse_analyze_response(response: str, business_type: str) -> dict:
             gender = line.replace("GENDER:", "").strip()
             if gender in ["여성", "남성", "공용"]:
                 result["gender"] = gender
+        elif line.startswith("TARGET:"):
+            target = line.replace("TARGET:", "").strip()
+            if target in ["사람", "아동", "반려동물"]:
+                result["target"] = target
 
     if not result["brand_kr"] and result["brand"]:
         result["brand_kr"] = BRAND_KR_MAP.get(result["brand"].upper(), "")
@@ -1669,6 +1706,7 @@ async def analyze_product(
             product_name=parsed.get("product_name", parsed["product_keyword"]),
             product_keyword=parsed["product_keyword"],
             gender=parsed["gender"],
+            target=parsed["target"],
             seo_title=seo_data.get("seo_title", ""),
             seo_description=seo_data.get("seo_description", ""),
             seo_keywords=seo_data.get("seo_keywords", ""),
