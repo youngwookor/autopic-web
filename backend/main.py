@@ -456,7 +456,7 @@ Requirements:
 - CRITICAL: Keep ALL original details EXACTLY as shown
 - Do NOT change any materials, colors, patterns, or design elements"""
 
-PROMPT_PRODUCT_EDITORIAL = """Create luxury editorial product photos with dramatic lighting.
+PROMPT_PRODUCT_EDITORIAL_LUXURY = """Create luxury editorial product photos with dramatic lighting.
 CRITICAL OUTPUT FORMAT:
 - Generate a SINGLE image containing a 2x2 GRID (4 photos arranged in 2 rows, 2 columns)
 - The output must be ONE square image divided into 4 equal quadrants
@@ -476,6 +476,60 @@ STYLE REQUIREMENTS:
 [bottom-right]: Detail close-up with spotlight effect
 
 CRITICAL: Keep ALL original product details EXACTLY as shown"""
+
+PROMPT_PRODUCT_EDITORIAL_KIDS = """Create bright, cheerful product photos for kids' items.
+CRITICAL OUTPUT FORMAT:
+- Generate a SINGLE image containing a 2x2 GRID (4 photos arranged in 2 rows, 2 columns)
+- The output must be ONE square image divided into 4 equal quadrants
+
+STYLE REQUIREMENTS:
+- Bright, cheerful, colorful atmosphere
+- Soft, warm natural lighting
+- Pastel or playful colored backgrounds (light pink, mint, yellow, sky blue)
+- Fun props like balloons, toys, stars, or cute decorations
+- Happy, joyful mood perfect for children's products
+- Clean, inviting aesthetic
+
+2x2 grid layout:
+[top-left]: Front view with soft lighting and colorful background
+[top-right]: Side view with playful props nearby
+[bottom-left]: Back view with cheerful setting
+[bottom-right]: Detail close-up highlighting cute design elements
+
+CRITICAL: Keep ALL original product details EXACTLY as shown. Make it appealing to parents shopping for kids."""
+
+PROMPT_PRODUCT_EDITORIAL_PET = """Create adorable, heartwarming product photos for pet items.
+CRITICAL OUTPUT FORMAT:
+- Generate a SINGLE image containing a 2x2 GRID (4 photos arranged in 2 rows, 2 columns)
+- The output must be ONE square image divided into 4 equal quadrants
+
+STYLE REQUIREMENTS:
+- Warm, cozy, loving atmosphere
+- Soft, natural lighting (golden hour feel)
+- Warm-toned backgrounds (cream, beige, soft wood tones)
+- Homey setting elements (soft blankets, cushions, pet beds)
+- Inviting mood that pet owners will love
+- Clean, premium pet boutique aesthetic
+
+2x2 grid layout:
+[top-left]: Front view with warm, cozy background
+[top-right]: Side view with soft textures nearby
+[bottom-left]: Back view in homey setting
+[bottom-right]: Detail close-up highlighting quality and design
+
+CRITICAL: Keep ALL original product details EXACTLY as shown. Make it appealing to loving pet owners."""
+
+
+def build_editorial_product_prompt(category: str, target: str = "사람") -> str:
+    """카테고리/타겟별 화보 정물 프롬프트 생성"""
+    category_group = get_category_group(category, "", target)
+    
+    if category_group == "키즈" or target == "아동":
+        return PROMPT_PRODUCT_EDITORIAL_KIDS
+    elif category_group == "펫용품" or target == "반려동물":
+        return PROMPT_PRODUCT_EDITORIAL_PET
+    else:
+        return PROMPT_PRODUCT_EDITORIAL_LUXURY
 
 
 def build_model_prompt(category: str, gender: str, target: str = "사람") -> str:
@@ -996,7 +1050,7 @@ async def generate_image(request: GenerateRequest):
         if request.mode == "model":
             prompt = build_model_prompt(request.category, request.gender, request.target)
         elif request.mode == "editorial_product":
-            prompt = PROMPT_PRODUCT_EDITORIAL
+            prompt = build_editorial_product_prompt(request.category, request.target)
         elif request.mode == "editorial_model":
             prompt = build_editorial_model_prompt(request.category, request.gender, request.target)
         else:
