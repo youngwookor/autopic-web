@@ -3,6 +3,10 @@
 Autopic Backend - FastAPI
 =========================
 AI 이미지 생성 + 결제 API 서버
+
+기존 processor.py, editorial_image_generator_v3.py와 100% 동일한 프롬프트/성별 처리
++ 확장 카테고리 지원 (키즈, 펫용품, 뷰티, 스포츠)
++ 한글/영문 카테고리 모두 지원
 """
 
 import os
@@ -33,7 +37,7 @@ from google import genai
 from google.genai import types
 
 app = FastAPI(
-    title="Autopic API", description="AI 상품 이미지 생성 + 결제 API", version="1.0.0"
+    title="Autopic API", description="AI 상품 이미지 생성 + 결제 API", version="1.1.0"
 )
 
 # CORS 설정
@@ -65,90 +69,61 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 
 class RateLimiter:
-    """간단한 메모리 기반 Rate Limiter"""
-
     def __init__(self):
-        # {key: [(timestamp, count), ...]}
         self.requests: Dict[str, list] = defaultdict(list)
-        self.cleanup_interval = 60  # 60초마다 정리
+        self.cleanup_interval = 60
         self.last_cleanup = time.time()
 
     def _cleanup(self):
-        """오래된 기록 정리"""
         now = time.time()
         if now - self.last_cleanup < self.cleanup_interval:
             return
-
         for key in list(self.requests.keys()):
-            # 1분 이상 오래된 기록 제거
             self.requests[key] = [
                 (ts, cnt) for ts, cnt in self.requests[key] if now - ts < 60
             ]
             if not self.requests[key]:
                 del self.requests[key]
-
         self.last_cleanup = now
 
     def is_allowed(self, key: str, limit: int, window: int = 60) -> bool:
-        """
-        요청 허용 여부 확인
-
-        Args:
-            key: 제한 키 (API 키 또는 IP)
-            limit: 제한 횟수
-            window: 시간 창 (초)
-        """
         self._cleanup()
-
         now = time.time()
         window_start = now - window
-
-        # 현재 창 내 요청 수 계산
         recent_requests = [
             (ts, cnt) for ts, cnt in self.requests[key] if ts > window_start
         ]
-
         total_requests = sum(cnt for _, cnt in recent_requests)
-
         if total_requests >= limit:
             return False
-
-        # 요청 기록
         self.requests[key].append((now, 1))
         return True
 
     def get_remaining(self, key: str, limit: int, window: int = 60) -> int:
-        """남은 요청 횟수"""
         now = time.time()
         window_start = now - window
-
         recent_requests = [
             (ts, cnt) for ts, cnt in self.requests[key] if ts > window_start
         ]
-
         total_requests = sum(cnt for _, cnt in recent_requests)
         return max(0, limit - total_requests)
 
 
-# Rate Limiter 인스턴스
 rate_limiter = RateLimiter()
 
-# Rate Limit 설정
 RATE_LIMITS = {
-    "generate": {"limit": 10, "window": 60},  # 분당 10회 이미지 생성
-    "api_key": {"limit": 20, "window": 60},  # 분당 20회 API 호출
+    "generate": {"limit": 10, "window": 60},
+    "api_key": {"limit": 20, "window": 60},
 }
 
-# 모델 설정 - Standard/Premium (이전 flash/pro 하위호환 유지)
+# 모델 설정
 MODEL_CONFIG = {
     "standard": {"model": "gemini-2.5-flash-image-preview", "credits": 1},
     "premium": {"model": "gemini-3-pro-image-preview", "credits": 3},
-    # 하위 호환성 (설치형 프로그램용)
     "flash": {"model": "gemini-2.5-flash-image-preview", "credits": 1},
     "pro": {"model": "gemini-3-pro-image-preview", "credits": 3},
 }
 
-# 요금제 설정 - 메인페이지와 동일
 PRICING_PLANS = {
     "light": {"credits": 50, "price": 19000, "name": "Light"},
     "standard": {"credits": 200, "price": 49000, "name": "Standard"},
@@ -157,34 +132,302 @@ PRICING_PLANS = {
     "ultimate": {"credits": 5000, "price": 999000, "name": "Ultimate"},
 }
 
-# 현재 API 키 인덱스
 current_key_index = 0
 
 
 def get_gemini_client():
-    """Gemini 클라이언트 생성 (키 로테이션)"""
     global current_key_index
     if not GEMINI_API_KEYS or not GEMINI_API_KEYS[0]:
-        raise HTTPException(
-            status_code=500, detail="Gemini API 키가 설정되지 않았습니다"
-        )
-
+        raise HTTPException(status_code=500, detail="Gemini API 키가 설정되지 않았습니다")
     key = GEMINI_API_KEYS[current_key_index % len(GEMINI_API_KEYS)]
     return genai.Client(api_key=key)
 
 
 def rotate_key():
-    """다음 API 키로 전환"""
     global current_key_index
     current_key_index = (current_key_index + 1) % len(GEMINI_API_KEYS)
 
 
 # ============================================================================
-# 프롬프트 - 데스크탑 앱과 동일
+# 카테고리 그룹 설정 (13개 그룹) - 확장 버전
 # ============================================================================
 
+# 1차 카테고리 → 그룹 매핑 (한글)
+CATEGORY1_TO_GROUP = {
+    # 기존 패션
+    "상의": "의류",
+    "하의": "의류",
+    "아우터": "의류",
+    "의류": "의류",
+    "가방": "가방",
+    "신발": "신발",
+    "시계": "시계",
+    "액세서리": "소품",
+    "패션잡화": "소품",
+    # 확장 카테고리
+    "키즈": "키즈",
+    "아동": "키즈",
+    "유아": "키즈",
+    "펫": "펫용품",
+    "반려동물": "펫용품",
+    "뷰티": "뷰티",
+    "화장품": "뷰티",
+    "스킨케어": "뷰티",
+    "스포츠": "스포츠",
+    "운동": "스포츠",
+    "레저": "스포츠",
+    "애슬레저": "스포츠",
+}
+
+# 2차 카테고리 → 그룹 매핑 (한글)
+CATEGORY2_TO_GROUP = {
+    # 주얼리
+    "반지": "주얼리",
+    "팔찌": "주얼리",
+    "목걸이": "주얼리",
+    "귀걸이": "주얼리",
+    "주얼리": "주얼리",
+    # 아이웨어
+    "아이웨어": "아이웨어",
+    "선글라스": "아이웨어",
+    "안경": "아이웨어",
+    # 모자
+    "모자": "모자",
+    "캡": "모자",
+    "비니": "모자",
+    # 스카프
+    "머플러/스카프": "스카프",
+    "스카프": "스카프",
+    "머플러": "스카프",
+    # 벨트
+    "벨트": "벨트",
+    # 소품
+    "지갑": "소품",
+    "키링": "소품",
+    "기타 잡화": "소품",
+    "파우치": "소품",
+    # 키즈
+    "아동복": "키즈",
+    "유아복": "키즈",
+    "아동신발": "키즈",
+    "아동가방": "키즈",
+    # 펫용품
+    "펫의류": "펫용품",
+    "펫용품": "펫용품",
+    "목줄/하네스": "펫용품",
+    "펫캐리어": "펫용품",
+    # 뷰티
+    "메이크업": "뷰티",
+    "스킨케어": "뷰티",
+    "향수": "뷰티",
+    "헤어케어": "뷰티",
+    # 스포츠
+    "운동복": "스포츠",
+    "요가웨어": "스포츠",
+    "스포츠웨어": "스포츠",
+    "레깅스": "스포츠",
+    "운동화": "스포츠",
+}
+
+# 영문 카테고리 → 그룹 매핑 (API 호출용)
+CATEGORY_EN_TO_GROUP = {
+    # 기존
+    "clothing": "의류",
+    "bag": "가방",
+    "shoes": "신발",
+    "watch": "시계",
+    "jewelry": "주얼리",
+    "eyewear": "아이웨어",
+    "hat": "모자",
+    "scarf": "스카프",
+    "belt": "벨트",
+    "accessory": "소품",
+    # 확장
+    "kids": "키즈",
+    "pet": "펫용품",
+    "beauty": "뷰티",
+    "sports": "스포츠",
+}
+
+
+def get_category_group(category1: str, category2: str = "") -> str:
+    """카테고리 그룹 결정 (한글/영문 모두 지원)"""
+    category1 = str(category1).strip("[]") if category1 else ""
+    category2 = str(category2).strip("[]") if category2 else ""
+    
+    # 1. 영문 카테고리 체크
+    if category1.lower() in CATEGORY_EN_TO_GROUP:
+        return CATEGORY_EN_TO_GROUP[category1.lower()]
+    
+    # 2. 한글 1차 카테고리 체크
+    if category1 in CATEGORY1_TO_GROUP:
+        return CATEGORY1_TO_GROUP[category1]
+    
+    # 3. 한글 2차 카테고리 체크
+    if category2 in CATEGORY2_TO_GROUP:
+        return CATEGORY2_TO_GROUP[category2]
+    
+    # 4. 영문 2차 카테고리 체크
+    if category2.lower() in CATEGORY_EN_TO_GROUP:
+        return CATEGORY_EN_TO_GROUP[category2.lower()]
+    
+    # 5. 기본값
+    return "의류"
+
+
+def convert_gender_to_model(gender: str) -> str:
+    """성별을 모델 타입으로 변환 (기존 processor.py와 100% 동일)"""
+    gender_str = str(gender) if gender else ""
+    
+    if gender_str == "검토필요":
+        return "MALE"
+    elif gender_str == "male":
+        return "MALE"
+    elif "남성" in gender_str and "여성" not in gender_str:
+        return "MALE"
+    else:
+        return "FEMALE"
+
+
 # ============================================================================
-# 기본 프롬프트
+# 카테고리별 모델 포즈 설정 (13개 그룹)
+# ============================================================================
+
+CATEGORY_MODEL_CONFIG = {
+    # ==================== 기존 패션 카테고리 ====================
+    "의류": {
+        "name_en": "clothing",
+        "pose_front": "full body FRONT view - model facing camera, showing outfit clearly",
+        "pose_side": "full body SIDE view - profile or 3/4 angle showing silhouette",
+        "pose_back": "full body BACK view - showing rear of the outfit",
+        "pose_detail": "upper body DETAIL shot - closer view highlighting fabric and design",
+        "size_note": "",
+        "special_instruction": "",
+    },
+    "가방": {
+        "name_en": "handbag/bag",
+        "pose_front": "Model wearing bag on SHOULDER, FRONT view facing camera",
+        "pose_side": "Model wearing bag, SIDE view showing bag profile and depth",
+        "pose_back": "Model from BACK, bag worn CROSSBODY so bag's FRONT is visible",
+        "pose_detail": "Close-up of model's hand HOLDING the bag handle - DETAIL shot",
+        "size_note": "Bag should look proportional and realistic to model's body. Do NOT exaggerate bag size.",
+        "special_instruction": "",
+    },
+    "신발": {
+        "name_en": "shoes/footwear",
+        "pose_front": "Full body FRONT view - model standing, shoes clearly visible on feet",
+        "pose_side": "Full body SIDE view - showing shoe profile and heel",
+        "pose_back": "Close-up of model's feet from BACK angle - showing heel design (focus on feet and shoes only)",
+        "pose_detail": "Close-up DETAIL shot of model's feet wearing the shoes - showing texture and craftsmanship",
+        "size_note": "",
+        "special_instruction": "",
+    },
+    "시계": {
+        "name_en": "wristwatch",
+        "pose_front": "Model's wrist with watch, FRONT view - watch face clearly visible facing camera",
+        "pose_side": "Model's wrist at natural angle (arm relaxed) - watch face and profile visible",
+        "pose_back": "Model wearing watch, 3/4 ANGLE view - different pose showing watch on wrist from another elegant angle",
+        "pose_detail": "Close-up DETAIL of watch ON MODEL'S WRIST - showing dial and craftsmanship",
+        "size_note": "",
+        "special_instruction": "CRITICAL: Watch must ALWAYS be worn normally on wrist with face visible. All 4 shots must show the watch face and model's wrist.",
+    },
+    "주얼리": {
+        "name_en": "jewelry",
+        "pose_front": "Model wearing jewelry, FRONT view - jewelry clearly visible",
+        "pose_side": "Model wearing jewelry, SIDE view showing profile",
+        "pose_back": "Model wearing jewelry, 3/4 ANGLE view - different elegant pose still showing the jewelry from front",
+        "pose_detail": "Close-up DETAIL of jewelry ON THE MODEL - showing craftsmanship while model wears it",
+        "size_note": "",
+        "special_instruction": "CRITICAL: Jewelry must always be visible from front. For necklaces, show chest/collarbone area. For rings/bracelets, show palm side.",
+    },
+    "아이웨어": {
+        "name_en": "eyewear/sunglasses",
+        "pose_front": "Model wearing eyewear, FRONT view - face and glasses clearly visible",
+        "pose_side": "Model wearing eyewear, SIDE PROFILE view showing temple arm and frame",
+        "pose_back": "Model wearing eyewear, 3/4 ANGLE view - showing glasses from a different front angle",
+        "pose_detail": "Close-up DETAIL of eyewear on model's face - lens and frame details",
+        "size_note": "",
+        "special_instruction": "All angles must show the front of the glasses, not the back of head.",
+    },
+    "모자": {
+        "name_en": "hat/cap",
+        "pose_front": "Model wearing hat, FRONT view - face and hat clearly visible",
+        "pose_side": "Model wearing hat, SIDE view showing hat profile and brim",
+        "pose_back": "Model wearing hat, BACK view showing back of hat and head",
+        "pose_detail": "Close-up DETAIL of hat ON THE MODEL'S HEAD - showing design, logo, or texture",
+        "size_note": "",
+        "special_instruction": "",
+    },
+    "스카프": {
+        "name_en": "scarf/muffler",
+        "pose_front": "Model wearing scarf around neck, FRONT view - scarf draping visible",
+        "pose_side": "Model wearing scarf, SIDE view showing how it's wrapped",
+        "pose_back": "Model wearing scarf, 3/4 ANGLE view - different elegant pose showing scarf styling from another front angle",
+        "pose_detail": "Close-up DETAIL of scarf ON THE MODEL'S NECK - showing pattern, texture, and fabric",
+        "size_note": "",
+        "special_instruction": "",
+    },
+    "벨트": {
+        "name_en": "belt",
+        "pose_front": "Model WEARING the belt around waist, FRONT view - buckle clearly visible",
+        "pose_side": "Model wearing belt, SIDE view showing belt profile on waist",
+        "pose_back": "Model wearing belt, 3/4 ANGLE view - different pose showing belt and buckle from another front angle",
+        "pose_detail": "Close-up DETAIL of belt buckle ON THE MODEL'S WAIST - showing hardware and leather craftsmanship",
+        "size_note": "",
+        "special_instruction": "CRITICAL: Model must WEAR the belt around waist in ALL shots. Do NOT show model holding a separate belt.",
+    },
+    "소품": {
+        "name_en": "accessory item",
+        "pose_front": "Model HOLDING the item elegantly, FRONT view",
+        "pose_side": "Model holding item, SIDE view showing item profile",
+        "pose_back": "Model holding item, 3/4 ANGLE view - showing item from different angle",
+        "pose_detail": "Close-up DETAIL of item ON/WITH THE MODEL - showing craftsmanship",
+        "size_note": "",
+        "special_instruction": "For wallets and small items, model should hold them elegantly in hands.",
+    },
+    
+    # ==================== 확장 카테고리 ====================
+    "키즈": {
+        "name_en": "kids clothing/item",
+        "pose_front": "CHILD model (age 8-12) wearing item, FRONT view - bright, cheerful expression",
+        "pose_side": "Child model, SIDE view - playful, natural pose",
+        "pose_back": "Child model, BACK view - showing rear of outfit",
+        "pose_detail": "Upper body DETAIL shot - closer view highlighting design and fabric",
+        "size_note": "Use age-appropriate child model (8-12 years old). Keep poses natural and fun.",
+        "special_instruction": "CRITICAL: Use CHILD model only. Bright, cheerful atmosphere. Colorful, kid-friendly styling.",
+    },
+    "펫용품": {
+        "name_en": "pet product/accessory",
+        "pose_front": "Adult model WITH cute pet (dog or cat) wearing/using the product, FRONT view - warm interaction",
+        "pose_side": "Model and pet together, SIDE view - showing product clearly on pet",
+        "pose_back": "Focus on pet wearing product, 3/4 ANGLE view - pet looking adorable",
+        "pose_detail": "Close-up DETAIL of product ON THE PET - showing quality and design",
+        "size_note": "Include a cute, well-groomed pet (dog or cat). Pet should be the focus.",
+        "special_instruction": "CRITICAL: Must include a real-looking pet. Warm, loving atmosphere. Pet must wear/use the product visibly.",
+    },
+    "뷰티": {
+        "name_en": "beauty/cosmetic product",
+        "pose_front": "Model with flawless skin HOLDING product elegantly near face, FRONT view",
+        "pose_side": "Model applying or presenting product, SIDE view - showing skin texture",
+        "pose_back": "Close-up of model's hand holding product, elegant angle",
+        "pose_detail": "Product DETAIL with model's skin visible - showing texture and packaging",
+        "size_note": "Focus on clean, glowing skin. Product should complement model's beauty.",
+        "special_instruction": "CRITICAL: Model must have flawless, dewy skin. Soft, luxurious lighting. Clean beauty aesthetic.",
+    },
+    "스포츠": {
+        "name_en": "sportswear/athletic wear",
+        "pose_front": "Athletic model in DYNAMIC pose wearing item, FRONT view - energetic, powerful",
+        "pose_side": "Model in motion or stretch pose, SIDE view - showing fit and flexibility",
+        "pose_back": "Model from BACK in athletic stance - showing back design",
+        "pose_detail": "Upper body or focus area DETAIL - highlighting technical fabric and fit",
+        "size_note": "Model should look fit and athletic. Dynamic, energetic poses.",
+        "special_instruction": "CRITICAL: Use fit, athletic model. Dynamic poses suggesting movement. Gym or outdoor sports setting optional.",
+    },
+}
+
+
+# ============================================================================
+# 프롬프트 - 기존 방식과 100% 동일
 # ============================================================================
 
 PROMPT_PRODUCT = """Edit this product photo for luxury e-commerce website.
@@ -199,10 +442,6 @@ Requirements:
 - 2x2 grid layout: [top-left: front view] [top-right: side view] [bottom-left: back view] [bottom-right: detail close-up]
 - CRITICAL: Keep ALL original details EXACTLY as shown
 - Do NOT change any materials, colors, patterns, or design elements"""
-
-# ============================================================================
-# 화보 프롬프트 (Editorial)
-# ============================================================================
 
 PROMPT_PRODUCT_EDITORIAL = """Create luxury editorial product photos with dramatic lighting.
 CRITICAL OUTPUT FORMAT:
@@ -225,10 +464,183 @@ STYLE REQUIREMENTS:
 
 CRITICAL: Keep ALL original product details EXACTLY as shown"""
 
-# 화보 모델 프롬프트 (하이패션 룩북 스타일)
-PROMPT_MODEL_EDITORIAL = """You are a legendary fashion photographer creating an ICONIC editorial spread.
 
-PRODUCT TO FEATURE: fashion item
+def build_model_prompt(category: str, gender: str) -> str:
+    """카테고리별 기본 모델 프롬프트 생성 (공홈 스타일)"""
+    category_group = get_category_group(category, "")
+    config = CATEGORY_MODEL_CONFIG.get(category_group, CATEGORY_MODEL_CONFIG["의류"])
+    gender_model = convert_gender_to_model(gender)
+    
+    template = """Create professional luxury fashion e-commerce model photos with this exact {product_type}.
+
+{size_note}
+
+CRITICAL OUTPUT FORMAT:
+- Generate a SINGLE image containing a 2x2 GRID (4 photos arranged in 2 rows, 2 columns)
+- The output must be ONE square image divided into 4 equal quadrants
+
+Requirements:
+- Use the SAME single {gender_model} model for ALL 4 shots
+- CRITICAL: Same face, same hair, same outfit in ALL 4 images
+- Do NOT show the model's full face - crop at jawline/chin level
+- Pure white studio background (#FFFFFF)
+- 2x2 grid layout:
+  [top-left]: {pose_front}
+  [top-right]: {pose_side}
+  [bottom-left]: {pose_back}
+  [bottom-right]: {pose_detail}
+- High-end luxury brand website style
+
+{special_instruction}
+
+CRITICAL:
+- Product must match EXACTLY - same color, pattern, material, design, hardware
+- The SAME model must appear in ALL 4 shots with consistent appearance"""
+
+    return template.format(
+        product_type=config["name_en"],
+        gender_model=gender_model,
+        pose_front=config["pose_front"],
+        pose_side=config["pose_side"],
+        pose_back=config["pose_back"],
+        pose_detail=config["pose_detail"],
+        size_note=config["size_note"],
+        special_instruction=config["special_instruction"],
+    )
+
+
+def build_editorial_model_prompt(category: str, gender: str) -> str:
+    """카테고리별 화보 모델 프롬프트 생성 (에디토리얼 스타일)"""
+    category_group = get_category_group(category, "")
+    config = CATEGORY_MODEL_CONFIG.get(category_group, CATEGORY_MODEL_CONFIG["의류"])
+    gender_model = convert_gender_to_model(gender)
+    
+    # 키즈/펫용품은 화보 스타일 다르게 처리
+    if category_group == "키즈":
+        return f"""Create bright, cheerful editorial photos featuring a child model with this exact {config['name_en']}.
+
+CRITICAL OUTPUT FORMAT:
+- Generate a SINGLE image containing a 2x2 GRID (4 photos in 2 rows, 2 columns)
+- The output must be ONE square image divided into 4 equal quadrants
+
+MODEL: Adorable CHILD model (age 8-12) with bright smile
+- Same child in ALL 4 shots
+- Natural, playful expressions
+- Age-appropriate styling
+
+{config['size_note']}
+
+VISUAL STYLE:
+- Bright, colorful, cheerful atmosphere
+- Soft natural lighting
+- Fun, kid-friendly backgrounds (playground, bedroom, outdoor)
+- Warm, happy mood
+
+2x2 GRID LAYOUT:
+[TOP-LEFT]: {config['pose_front']}
+[TOP-RIGHT]: {config['pose_side']}
+[BOTTOM-LEFT]: {config['pose_back']}
+[BOTTOM-RIGHT]: {config['pose_detail']}
+
+{config['special_instruction']}
+
+CRITICAL: Product must match EXACTLY. Same child model in ALL shots."""
+    
+    elif category_group == "펫용품":
+        return f"""Create heartwarming editorial photos featuring a model with their pet using this exact {config['name_en']}.
+
+CRITICAL OUTPUT FORMAT:
+- Generate a SINGLE image containing a 2x2 GRID (4 photos in 2 rows, 2 columns)
+- The output must be ONE square image divided into 4 equal quadrants
+
+MODEL: Adult {gender_model} model with cute, well-groomed pet (dog or cat)
+- Same model and SAME pet in ALL 4 shots
+- Warm, loving interaction between model and pet
+- Pet must be wearing/using the product
+
+{config['size_note']}
+
+VISUAL STYLE:
+- Warm, cozy atmosphere
+- Soft natural lighting
+- Home or outdoor setting
+- Loving, caring mood
+
+2x2 GRID LAYOUT:
+[TOP-LEFT]: {config['pose_front']}
+[TOP-RIGHT]: {config['pose_side']}
+[BOTTOM-LEFT]: {config['pose_back']}
+[BOTTOM-RIGHT]: {config['pose_detail']}
+
+{config['special_instruction']}
+
+CRITICAL: Product must match EXACTLY. Same model AND same pet in ALL shots."""
+    
+    elif category_group == "뷰티":
+        return f"""Create luxurious beauty editorial photos featuring a model with this exact {config['name_en']}.
+
+CRITICAL OUTPUT FORMAT:
+- Generate a SINGLE image containing a 2x2 GRID (4 photos in 2 rows, 2 columns)
+- The output must be ONE square image divided into 4 equal quadrants
+
+MODEL: Stunning {gender_model} model with FLAWLESS, GLOWING skin
+- Same model in ALL 4 shots
+- Dewy, luminous complexion
+- Elegant, sophisticated makeup
+
+{config['size_note']}
+
+VISUAL STYLE:
+- Clean, luxurious beauty aesthetic
+- Soft, flattering lighting that highlights skin
+- Minimal, elegant backgrounds (marble, soft gradients)
+- High-end beauty brand campaign quality
+
+2x2 GRID LAYOUT:
+[TOP-LEFT]: {config['pose_front']}
+[TOP-RIGHT]: {config['pose_side']}
+[BOTTOM-LEFT]: {config['pose_back']}
+[BOTTOM-RIGHT]: {config['pose_detail']}
+
+{config['special_instruction']}
+
+CRITICAL: Product must match EXACTLY. Same model in ALL shots. Focus on skin quality."""
+    
+    elif category_group == "스포츠":
+        return f"""Create dynamic athletic editorial photos featuring a model with this exact {config['name_en']}.
+
+CRITICAL OUTPUT FORMAT:
+- Generate a SINGLE image containing a 2x2 GRID (4 photos in 2 rows, 2 columns)
+- The output must be ONE square image divided into 4 equal quadrants
+
+MODEL: Fit, athletic {gender_model} model with toned physique
+- Same model in ALL 4 shots
+- Dynamic, powerful poses
+- Athletic, energetic expressions
+
+{config['size_note']}
+
+VISUAL STYLE:
+- High-energy, dynamic atmosphere
+- Dramatic sports lighting
+- Gym, studio, or outdoor sports setting
+- Nike/Adidas campaign quality
+
+2x2 GRID LAYOUT:
+[TOP-LEFT]: {config['pose_front']}
+[TOP-RIGHT]: {config['pose_side']}
+[BOTTOM-LEFT]: {config['pose_back']}
+[BOTTOM-RIGHT]: {config['pose_detail']}
+
+{config['special_instruction']}
+
+CRITICAL: Product must match EXACTLY. Same athletic model in ALL shots."""
+    
+    else:
+        # 기존 패션 화보 스타일
+        template = """You are a legendary fashion photographer creating an ICONIC editorial spread.
+
+PRODUCT TO FEATURE: {product_type}
 [Reference image attached - preserve EXACT product details: color, material, pattern, hardware, design]
 
 CRITICAL OUTPUT FORMAT:
@@ -243,6 +655,8 @@ MODEL CASTING - CRITICAL:
 - Expression: fierce, smoldering, or mysteriously captivating
 - Perfect editorial hair and makeup
 
+{size_note}
+
 VISUAL STYLE - MAKE IT UNFORGETTABLE:
 - Cinematic, dramatic lighting with intentional shadows and highlights
 - Rich, editorial color grading
@@ -251,10 +665,19 @@ VISUAL STYLE - MAKE IT UNFORGETTABLE:
 - Every frame should be COVER-WORTHY
 
 2x2 GRID LAYOUT:
-[TOP-LEFT] HERO SHOT: Full body front view - dramatic lighting, powerful presence, magazine cover quality
-[TOP-RIGHT] LIFESTYLE SHOT: Full body side view - storytelling moment with emotional depth, luxurious setting
-[BOTTOM-LEFT] MOVEMENT SHOT: Full body back/3/4 view - dynamic energy, hair or fabric in motion
-[BOTTOM-RIGHT] DETAIL SHOT: Upper body detail - artistic close-up highlighting the product craftsmanship
+[TOP-LEFT] HERO SHOT: {pose_front}
+Dramatic lighting, powerful presence, magazine cover quality
+
+[TOP-RIGHT] LIFESTYLE SHOT: {pose_side} 
+Storytelling moment with emotional depth, luxurious setting
+
+[BOTTOM-LEFT] MOVEMENT SHOT: {pose_back}
+Dynamic energy - hair or fabric in motion, frozen in perfect moment
+
+[BOTTOM-RIGHT] DETAIL SHOT: {pose_detail}
+Artistic close-up highlighting the product craftsmanship
+
+{special_instruction}
 
 NON-NEGOTIABLE REQUIREMENTS:
 1. Product EXACTLY matches reference - same color, material, pattern, hardware
@@ -268,109 +691,19 @@ ABSOLUTELY FORBIDDEN:
 - NO magazine logos, NO watermarks, NO text overlays, NO "VOGUE" or any brand names
 - NO plain white/gray studio backgrounds
 - NO stiff, mannequin-like poses
-- NO generic stock photo aesthetics"""
+- NO generic stock photo aesthetics
+- NO Asian models (Western/European casting only)"""
 
-# 카테고리별 모델 프롬프트 설정
-CATEGORY_CONFIG = {
-    "clothing": {
-        "name_en": "clothing",
-        "pose_front": "full body FRONT view - model facing camera, showing outfit clearly",
-        "pose_side": "full body SIDE view - profile or 3/4 angle showing silhouette",
-        "pose_back": "full body BACK view - showing rear of the outfit",
-        "pose_detail": "upper body DETAIL shot - closer view highlighting fabric and design",
-    },
-    "bag": {
-        "name_en": "handbag/bag",
-        "pose_front": "Model wearing bag on SHOULDER, FRONT view facing camera",
-        "pose_side": "Model wearing bag, SIDE view showing bag profile and depth",
-        "pose_back": "Model from BACK, bag worn CROSSBODY so bag's FRONT is visible",
-        "pose_detail": "Close-up of model's hand HOLDING the bag handle - DETAIL shot",
-    },
-    "shoes": {
-        "name_en": "shoes/footwear",
-        "pose_front": "Full body FRONT view - model standing, shoes clearly visible on feet",
-        "pose_side": "Full body SIDE view - showing shoe profile and heel",
-        "pose_back": "Close-up of model's feet from BACK angle - showing heel design",
-        "pose_detail": "Close-up DETAIL shot of model's feet wearing the shoes",
-    },
-    "watch": {
-        "name_en": "wristwatch",
-        "pose_front": "Model's wrist with watch, FRONT view - watch face clearly visible",
-        "pose_side": "Model's wrist at natural angle - watch face and profile visible",
-        "pose_back": "Model wearing watch, 3/4 ANGLE view",
-        "pose_detail": "Close-up DETAIL of watch ON MODEL'S WRIST",
-    },
-    "jewelry": {
-        "name_en": "jewelry",
-        "pose_front": "Model wearing jewelry, FRONT view - jewelry clearly visible",
-        "pose_side": "Model wearing jewelry, SIDE view showing profile",
-        "pose_back": "Model wearing jewelry, 3/4 ANGLE view",
-        "pose_detail": "Close-up DETAIL of jewelry ON THE MODEL",
-    },
-    "eyewear": {
-        "name_en": "eyewear/sunglasses",
-        "pose_front": "Model wearing eyewear, FRONT view - face and glasses clearly visible",
-        "pose_side": "Model wearing eyewear, SIDE PROFILE view",
-        "pose_back": "Model wearing eyewear, 3/4 ANGLE view",
-        "pose_detail": "Close-up DETAIL of eyewear on model's face",
-    },
-    "hat": {
-        "name_en": "hat/cap",
-        "pose_front": "Model wearing hat, FRONT view",
-        "pose_side": "Model wearing hat, SIDE view showing hat profile",
-        "pose_back": "Model wearing hat, BACK view",
-        "pose_detail": "Close-up DETAIL of hat ON THE MODEL'S HEAD",
-    },
-    "scarf": {
-        "name_en": "scarf/muffler",
-        "pose_front": "Model wearing scarf around neck, FRONT view",
-        "pose_side": "Model wearing scarf, SIDE view",
-        "pose_back": "Model wearing scarf, 3/4 ANGLE view",
-        "pose_detail": "Close-up DETAIL of scarf ON THE MODEL'S NECK",
-    },
-    "belt": {
-        "name_en": "belt",
-        "pose_front": "Model WEARING the belt around waist, FRONT view - buckle visible",
-        "pose_side": "Model wearing belt, SIDE view",
-        "pose_back": "Model wearing belt, 3/4 ANGLE view",
-        "pose_detail": "Close-up DETAIL of belt buckle ON THE MODEL'S WAIST",
-    },
-    "accessory": {
-        "name_en": "accessory item",
-        "pose_front": "Model HOLDING the item elegantly, FRONT view",
-        "pose_side": "Model holding item, SIDE view",
-        "pose_back": "Model holding item, 3/4 ANGLE view",
-        "pose_detail": "Close-up DETAIL of item ON/WITH THE MODEL",
-    },
-}
-
-
-def build_model_prompt(category: str, gender: str) -> str:
-    """카테고리별 모델 프롬프트 생성"""
-    config = CATEGORY_CONFIG.get(category, CATEGORY_CONFIG["clothing"])
-    gender_str = "FEMALE" if gender == "female" else "MALE"
-
-    return f"""Create professional luxury fashion e-commerce model photos with this exact {config['name_en']}.
-
-CRITICAL OUTPUT FORMAT:
-- Generate a SINGLE image containing a 2x2 GRID (4 photos arranged in 2 rows, 2 columns)
-- The output must be ONE square image divided into 4 equal quadrants
-
-Requirements:
-- Use the SAME single {gender_str} model for ALL 4 shots
-- CRITICAL: Same face, same hair, same outfit in ALL 4 images
-- Do NOT show the model's full face - crop at jawline/chin level
-- Pure white studio background (#FFFFFF)
-- 2x2 grid layout:
-  [top-left]: {config['pose_front']}
-  [top-right]: {config['pose_side']}
-  [bottom-left]: {config['pose_back']}
-  [bottom-right]: {config['pose_detail']}
-- High-end luxury brand website style
-
-CRITICAL:
-- Product must match EXACTLY - same color, pattern, material, design, hardware
-- The SAME model must appear in ALL 4 shots with consistent appearance"""
+        return template.format(
+            product_type=config["name_en"],
+            gender_model=gender_model,
+            pose_front=config["pose_front"],
+            pose_side=config["pose_side"],
+            pose_back=config["pose_back"],
+            pose_detail=config["pose_detail"],
+            size_note=config["size_note"],
+            special_instruction=config["special_instruction"],
+        )
 
 
 # ============================================================================
@@ -381,7 +714,7 @@ CRITICAL:
 class GenerateRequest(BaseModel):
     user_id: str
     image_base64: str
-    mode: str = "product"  # product, model, editorial_product, editorial_model
+    mode: str = "product"
     model_type: str = "flash"
     gender: str = "female"
     category: str = "clothing"
@@ -422,7 +755,6 @@ class PaymentResponse(BaseModel):
 
 
 def process_image(base64_data: str, max_size: int = 1568) -> str:
-    """이미지 전처리 (리사이즈, RGB 변환)"""
     try:
         if "," in base64_data:
             base64_data = base64_data.split(",")[1]
@@ -451,7 +783,6 @@ def process_image(base64_data: str, max_size: int = 1568) -> str:
 
 
 def split_grid_image(image_bytes: bytes, upscale_factor: int = 4) -> List[bytes]:
-    """2x2 그리드 이미지를 4개로 분할"""
     try:
         img = Image.open(io.BytesIO(image_bytes))
         width, height = img.size
@@ -485,7 +816,6 @@ def split_grid_image(image_bytes: bytes, upscale_factor: int = 4) -> List[bytes]
 
 
 async def upload_to_storage(user_id: str, image_bytes: bytes, index: int) -> str:
-    """Supabase Storage에 이미지 업로드"""
     try:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{user_id}/{timestamp}_{index}.jpg"
@@ -502,7 +832,6 @@ async def upload_to_storage(user_id: str, image_bytes: bytes, index: int) -> str
 
 
 async def check_credits(user_id: str, required: int) -> int:
-    """크레딧 확인"""
     try:
         result = (
             supabase.table("profiles")
@@ -520,9 +849,7 @@ async def check_credits(user_id: str, required: int) -> int:
 
 
 async def deduct_credits(user_id: str, amount: int) -> int:
-    """크레딧 차감 (원자적 처리)"""
     try:
-        # Supabase RPC 함수 호출 (동시 차감 방지)
         result = supabase.rpc(
             "deduct_credits_atomic", {"p_user_id": user_id, "p_amount": amount}
         ).execute()
@@ -530,7 +857,6 @@ async def deduct_credits(user_id: str, amount: int) -> int:
         if result.data:
             data = result.data
             if data.get("success"):
-                # 사용 내역 기록
                 supabase.table("usages").insert(
                     {
                         "user_id": user_id,
@@ -538,29 +864,22 @@ async def deduct_credits(user_id: str, amount: int) -> int:
                         "credits_used": amount,
                     }
                 ).execute()
-
                 return data.get("credits", 0)
             else:
                 raise HTTPException(
                     status_code=400, detail=data.get("error", "크레딧 차감 실패")
                 )
 
-        raise HTTPException(
-            status_code=500, detail="크레딧 처리 중 오류가 발생했습니다"
-        )
+        raise HTTPException(status_code=500, detail="크레딧 처리 중 오류가 발생했습니다")
     except HTTPException:
         raise
     except Exception as e:
         print(f"크레딧 차감 오류: {e}")
-        raise HTTPException(
-            status_code=500, detail="크레딧 처리 중 오류가 발생했습니다"
-        )
+        raise HTTPException(status_code=500, detail="크레딧 처리 중 오류가 발생했습니다")
 
 
 async def add_credits(user_id: str, amount: int) -> int:
-    """크레딧 추가 (원자적 처리)"""
     try:
-        # Supabase RPC 함수 호출
         result = supabase.rpc(
             "add_credits_atomic", {"p_user_id": user_id, "p_amount": amount}
         ).execute()
@@ -574,22 +893,17 @@ async def add_credits(user_id: str, amount: int) -> int:
                     status_code=400, detail=data.get("error", "크레딧 추가 실패")
                 )
 
-        raise HTTPException(
-            status_code=500, detail="크레딧 처리 중 오류가 발생했습니다"
-        )
+        raise HTTPException(status_code=500, detail="크레딧 처리 중 오류가 발생했습니다")
     except HTTPException:
         raise
     except Exception as e:
         print(f"크레딧 추가 오류: {e}")
-        raise HTTPException(
-            status_code=500, detail="크레딧 처리 중 오류가 발생했습니다"
-        )
+        raise HTTPException(status_code=500, detail="크레딧 처리 중 오류가 발생했습니다")
 
 
 async def save_generation(
     user_id: str, image_urls: List[str], mode: str, model_type: str, credits_used: int
 ):
-    """생성 내역 저장"""
     try:
         for url in image_urls:
             supabase.table("generations").insert(
@@ -614,7 +928,7 @@ async def save_generation(
 
 @app.get("/")
 async def root():
-    return {"message": "Autopic API", "version": "1.0.0"}
+    return {"message": "Autopic API", "version": "1.1.0", "categories": list(CATEGORY_MODEL_CONFIG.keys())}
 
 
 @app.get("/health")
@@ -624,9 +938,17 @@ async def health_check():
 
 @app.get("/api/credits/{user_id}")
 async def get_credits(user_id: str):
-    """크레딧 조회"""
     credits = await check_credits(user_id, 0)
     return {"credits": credits}
+
+
+@app.get("/api/categories")
+async def get_categories():
+    """지원 카테고리 목록 반환"""
+    return {
+        "categories": list(CATEGORY_MODEL_CONFIG.keys()),
+        "category_en": list(CATEGORY_EN_TO_GROUP.keys()),
+    }
 
 
 # ============================================================================
@@ -636,8 +958,6 @@ async def get_credits(user_id: str):
 
 @app.post("/api/generate", response_model=GenerateResponse)
 async def generate_image(request: GenerateRequest):
-    """이미지 생성 API"""
-
     if request.model_type not in MODEL_CONFIG:
         raise HTTPException(status_code=400, detail="잘못된 모델 타입입니다")
 
@@ -661,8 +981,7 @@ async def generate_image(request: GenerateRequest):
         elif request.mode == "editorial_product":
             prompt = PROMPT_PRODUCT_EDITORIAL
         elif request.mode == "editorial_model":
-            gender_str = "FEMALE" if request.gender == "female" else "MALE"
-            prompt = PROMPT_MODEL_EDITORIAL.format(gender_model=gender_str)
+            prompt = build_editorial_model_prompt(request.category, request.gender)
         else:
             prompt = PROMPT_PRODUCT
 
@@ -752,8 +1071,6 @@ async def generate_image(request: GenerateRequest):
 
 @app.post("/api/payment/create")
 async def create_payment(request: PaymentRequest):
-    """결제 주문 생성"""
-
     if request.plan not in PRICING_PLANS:
         raise HTTPException(status_code=400, detail="잘못된 요금제입니다")
 
@@ -784,8 +1101,6 @@ async def create_payment(request: PaymentRequest):
 
 @app.post("/api/payment/confirm", response_model=PaymentResponse)
 async def confirm_payment(request: PaymentConfirmRequest):
-    """토스페이먼츠 결제 승인"""
-
     try:
         auth_string = base64.b64encode(f"{TOSS_SECRET_KEY}:".encode()).decode()
 
@@ -851,7 +1166,6 @@ async def confirm_payment(request: PaymentConfirmRequest):
 
 @app.get("/api/payment/config")
 async def get_payment_config():
-    """결제 설정 정보 반환"""
     return {
         "client_key": TOSS_CLIENT_KEY,
         "plans": PRICING_PLANS,
@@ -859,17 +1173,15 @@ async def get_payment_config():
 
 
 # ============================================================================
-# API 키 발급 시스템 (설치형 프로그램용)
+# API 키 발급 시스템
 # ============================================================================
 
 
 def generate_api_key() -> str:
-    """안전한 API 키 생성"""
     return f"ap_{secrets.token_urlsafe(32)}"
 
 
 def hash_api_key(api_key: str) -> str:
-    """API 키 해시"""
     return hashlib.sha256(api_key.encode()).hexdigest()
 
 
@@ -880,16 +1192,14 @@ class APIKeyRequest(BaseModel):
 
 class APIKeyResponse(BaseModel):
     success: bool
-    api_key: Optional[str] = None  # 최초 발급 시만 반환
+    api_key: Optional[str] = None
     key_id: Optional[str] = None
     error: Optional[str] = None
 
 
 @app.post("/api/keys/generate", response_model=APIKeyResponse)
 async def generate_user_api_key(request: APIKeyRequest):
-    """사용자 API 키 발급"""
     try:
-        # 기존 키 확인 (활성 키 제한: 3개)
         existing = (
             supabase.table("api_keys")
             .select("*")
@@ -904,12 +1214,10 @@ async def generate_user_api_key(request: APIKeyRequest):
                 error="최대 3개의 API 키만 발급할 수 있습니다. 기존 키를 삭제해주세요.",
             )
 
-        # 새 API 키 생성
         api_key = generate_api_key()
         key_hash = hash_api_key(api_key)
         key_id = str(uuid.uuid4())
 
-        # DB 저장 (해시만 저장)
         supabase.table("api_keys").insert(
             {
                 "id": key_id,
@@ -923,7 +1231,7 @@ async def generate_user_api_key(request: APIKeyRequest):
 
         return APIKeyResponse(
             success=True,
-            api_key=api_key,  # 최초 1회만 반환
+            api_key=api_key,
             key_id=key_id,
         )
 
@@ -934,7 +1242,6 @@ async def generate_user_api_key(request: APIKeyRequest):
 
 @app.get("/api/keys/{user_id}")
 async def get_user_api_keys(user_id: str):
-    """사용자 API 키 목록 조회"""
     try:
         result = (
             supabase.table("api_keys")
@@ -943,12 +1250,11 @@ async def get_user_api_keys(user_id: str):
             .execute()
         )
 
-        # key_preview 추가 (해시 앞 8자리 + ... + 뒤 4자리)
         keys = []
         for key in result.data or []:
             key_hash = key.get("key_hash", "")
             key["key_preview"] = f"ap_****...{key_hash[-4:]}" if key_hash else "ap_****"
-            del key["key_hash"]  # 해시 전체는 반환하지 않음
+            del key["key_hash"]
             keys.append(key)
 
         return {"success": True, "keys": keys}
@@ -958,9 +1264,6 @@ async def get_user_api_keys(user_id: str):
 
 @app.delete("/api/keys/{key_id}")
 async def delete_api_key(key_id: str):
-    """
-    API 키 비활성화
-    """
     try:
         supabase.table("api_keys").update({"is_active": False}).eq(
             "id", key_id
@@ -971,9 +1274,6 @@ async def delete_api_key(key_id: str):
 
 
 async def verify_api_key(api_key: str) -> Optional[str]:
-    """
-    API 키 검증 및 사용자 ID 반환
-    """
     try:
         key_hash = hash_api_key(api_key)
         result = (
@@ -986,7 +1286,6 @@ async def verify_api_key(api_key: str) -> Optional[str]:
         )
 
         if result.data:
-            # 마지막 사용 시간 업데이트
             supabase.table("api_keys").update(
                 {"last_used_at": datetime.now().isoformat()}
             ).eq("key_hash", key_hash).execute()
@@ -997,7 +1296,7 @@ async def verify_api_key(api_key: str) -> Optional[str]:
 
 
 # ============================================================================
-# 설치형 프로그램용 API (헤더로 API 키 인증)
+# 설치형 프로그램용 API
 # ============================================================================
 
 
@@ -1013,12 +1312,9 @@ class DesktopGenerateRequest(BaseModel):
 async def desktop_generate_image(
     request: DesktopGenerateRequest, x_api_key: str = Header(None, alias="X-API-Key")
 ):
-    """설치형 프로그램용 이미지 생성 API"""
-
     if not x_api_key:
         raise HTTPException(status_code=401, detail="API 키가 필요합니다")
 
-    # Rate Limiting 체크
     rate_key = f"generate:{x_api_key[:20]}"
     if not rate_limiter.is_allowed(
         rate_key, RATE_LIMITS["generate"]["limit"], RATE_LIMITS["generate"]["window"]
@@ -1035,7 +1331,6 @@ async def desktop_generate_image(
     if not user_id:
         raise HTTPException(status_code=401, detail="유효하지 않은 API 키입니다")
 
-    # 기존 generate 로직 재사용
     gen_request = GenerateRequest(
         user_id=user_id,
         image_base64=request.image_base64,
@@ -1050,12 +1345,9 @@ async def desktop_generate_image(
 
 @app.get("/api/v1/credits")
 async def desktop_get_credits(x_api_key: str = Header(None, alias="X-API-Key")):
-    """설치형 프로그램용 크레딧 조회"""
-
     if not x_api_key:
         raise HTTPException(status_code=401, detail="API 키가 필요합니다")
 
-    # Rate Limiting 체크
     rate_key = f"credits:{x_api_key[:20]}"
     if not rate_limiter.is_allowed(
         rate_key, RATE_LIMITS["api_key"]["limit"], RATE_LIMITS["api_key"]["window"]
@@ -1073,17 +1365,17 @@ async def desktop_get_credits(x_api_key: str = Header(None, alias="X-API-Key")):
 
 
 # ============================================================================
-# AI 분석 API (Claude 사용 - 내장)
+# AI 분석 API
 # ============================================================================
 
 
 class AnalyzeRequest(BaseModel):
     image_base64: str
     product_name: str = ""
-    text_content: str = ""  # 텍스트 파일 내용
-    business_type: str = "luxury"  # luxury / fashion
-    categories: Dict[str, List[str]] = {}  # 사용자 등록 카테고리
-    brands: List[str] = []  # 사용자 등록 브랜드
+    text_content: str = ""
+    business_type: str = "luxury"
+    categories: Dict[str, List[str]] = {}
+    brands: List[str] = []
 
 
 class AnalyzeResponse(BaseModel):
@@ -1101,7 +1393,6 @@ class AnalyzeResponse(BaseModel):
     error: Optional[str] = None
 
 
-# 브랜드 한글 매핑
 BRAND_KR_MAP = {
     "GUCCI": "구찌",
     "LOUIS VUITTON": "루이비통",
@@ -1128,9 +1419,6 @@ BRAND_KR_MAP = {
 def build_analyze_prompt(
     business_type: str, categories: dict, brands: list, text_content: str = ""
 ) -> str:
-    """분석 프롬프트 생성 (명품/일반 구분)"""
-
-    # 카테고리 문자열 생성
     if categories:
         category_str = ""
         for primary, secondaries in categories.items():
@@ -1144,9 +1432,12 @@ def build_analyze_prompt(
 - 하의: 팬츠, 스커트, 반바지, 데님
 - 아우터: 자켓, 코트, 점퍼, 가디건
 - 신발: 스니커즈, 로퍼, 부츠, 샌들, 힐
-- 액세서리: 벨트, 스카프, 모자, 주얼리, 선글라스"""
+- 액세서리: 벨트, 스카프, 모자, 주얼리, 선글라스
+- 키즈: 아동복, 유아복, 아동신발
+- 펫: 펫의류, 펫용품, 목줄
+- 뷰티: 스킨케어, 메이크업, 향수
+- 스포츠: 운동복, 요가웨어, 스포츠웨어"""
 
-    # 텍스트 파일 내용이 있으면 추가
     text_section = ""
     if text_content:
         text_section = f"\n\n참고 텍스트 정보:\n{text_content[:1000]}\n"
@@ -1212,7 +1503,6 @@ def build_seo_prompt(
 
 
 def parse_analyze_response(response: str, business_type: str) -> dict:
-    """분석 응답 파싱"""
     result = {
         "brand": "",
         "brand_kr": "",
@@ -1240,11 +1530,9 @@ def parse_analyze_response(response: str, business_type: str) -> dict:
             if gender in ["여성", "남성", "공용"]:
                 result["gender"] = gender
 
-    # 한글 브랜드명 매핑
     if not result["brand_kr"] and result["brand"]:
         result["brand_kr"] = BRAND_KR_MAP.get(result["brand"].upper(), "")
 
-    # 상품명 생성
     if business_type == "luxury" and result["brand_kr"]:
         result["product_name"] = f"{result['brand_kr']} {result['product_keyword']}"
     else:
@@ -1256,7 +1544,6 @@ def parse_analyze_response(response: str, business_type: str) -> dict:
 async def call_claude_api_text(
     prompt: str, image_base64: str = None, max_retries: int = 3
 ) -> str:
-    """Claude API 호출 - 텍스트 반환 (재시도 포함)"""
     if not CLAUDE_API_KEY:
         return ""
 
@@ -1291,7 +1578,7 @@ async def call_claude_api_text(
                 "messages": [{"role": "user", "content": content}],
             }
 
-            async with httpx.AsyncClient(timeout=90.0) as client:  # 60→90초
+            async with httpx.AsyncClient(timeout=90.0) as client:
                 response = await client.post(
                     "https://api.anthropic.com/v1/messages", headers=headers, json=body
                 )
@@ -1302,12 +1589,9 @@ async def call_claude_api_text(
                 if result:
                     return result
 
-            # 429 (Rate Limit) 또는 500 에러 시 재시도
             if response.status_code in [429, 500, 502, 503]:
-                print(
-                    f"Claude API 재시도 {attempt + 1}/{max_retries} (상태: {response.status_code})"
-                )
-                await asyncio.sleep(2**attempt)  # 지수 백오프: 1초, 2초, 4초
+                print(f"Claude API 재시도 {attempt + 1}/{max_retries}")
+                await asyncio.sleep(2**attempt)
                 continue
 
             print(f"Claude API 오류: {response.status_code}")
@@ -1331,8 +1615,6 @@ async def call_claude_api_text(
 async def analyze_product(
     request: AnalyzeRequest, x_api_key: str = Header(None, alias="X-API-Key")
 ):
-    """상품 이미지 분석 API"""
-
     if not x_api_key:
         raise HTTPException(status_code=401, detail="API 키가 필요합니다")
 
@@ -1341,7 +1623,6 @@ async def analyze_product(
         raise HTTPException(status_code=401, detail="유효하지 않은 API 키입니다")
 
     try:
-        # 1단계: 이미지 분석 (텍스트 내용 포함)
         analyze_prompt = build_analyze_prompt(
             request.business_type,
             request.categories,
@@ -1356,7 +1637,6 @@ async def analyze_product(
 
         parsed = parse_analyze_response(response_text, request.business_type)
 
-        # 2단계: SEO 생성
         seo_prompt = build_seo_prompt(
             parsed["brand"],
             parsed["category1"],
