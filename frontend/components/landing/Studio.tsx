@@ -46,7 +46,7 @@ export default function Studio() {
   const [subject, setSubject] = useState<'product' | 'model'>('product');
   const [style, setStyle] = useState<'basic' | 'editorial'>('basic');
   const [modelType, setModelType] = useState<'standard' | 'premium'>('premium');
-  const [gender, setGender] = useState<'female' | 'male'>('female');
+  const [target, setTarget] = useState<'general' | 'kids' | 'pet'>('general');
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
@@ -155,8 +155,9 @@ export default function Studio() {
           image_base64: mainImage,
           mode: mode,
           model_type: modelType,
-          gender: gender,
-          category: 'auto',
+          gender: 'auto',
+          category: target === 'kids' ? '키즈' : target === 'pet' ? '펫용품' : 'auto',
+          target: target === 'kids' ? '아동' : target === 'pet' ? '반려동물' : '사람',
         }),
       });
 
@@ -456,29 +457,47 @@ export default function Studio() {
                   {/* Gender Selection (for model modes) */}
                   {subject === 'model' && (
                     <div>
-                      <label className="text-xs md:text-sm font-medium text-zinc-600 mb-1.5 md:mb-2 block">모델 성별</label>
-                      <div className="grid grid-cols-2 gap-2 md:gap-3">
+                      <label className="text-xs md:text-sm font-medium text-zinc-600 mb-1.5 md:mb-2 block">상품 타입</label>
+                      <div className="grid grid-cols-3 gap-2 md:gap-3">
                         <button 
-                          onClick={() => setGender('female')} 
-                          className={`py-2 md:py-2.5 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all border ${
-                            gender === 'female' 
-                              ? 'bg-zinc-900 text-white border-zinc-900' 
+                          onClick={() => setTarget('general')} 
+                          className={`py-2 md:py-2.5 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all border flex flex-col items-center gap-1 ${
+                            target === 'general' 
+                              ? 'bg-blue-500 text-white border-blue-500' 
                               : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'
                           }`}
                         >
-                          👩 여성
+                          <span className="text-base">👤</span>
+                          <span>일반</span>
                         </button>
                         <button 
-                          onClick={() => setGender('male')} 
-                          className={`py-2 md:py-2.5 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all border ${
-                            gender === 'male' 
-                              ? 'bg-zinc-900 text-white border-zinc-900' 
+                          onClick={() => setTarget('kids')} 
+                          className={`py-2 md:py-2.5 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all border flex flex-col items-center gap-1 ${
+                            target === 'kids' 
+                              ? 'bg-pink-500 text-white border-pink-500' 
                               : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'
                           }`}
                         >
-                          👨 남성
+                          <span className="text-base">🧒</span>
+                          <span>키즈</span>
+                        </button>
+                        <button 
+                          onClick={() => setTarget('pet')} 
+                          className={`py-2 md:py-2.5 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all border flex flex-col items-center gap-1 ${
+                            target === 'pet' 
+                              ? 'bg-amber-500 text-white border-amber-500' 
+                              : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'
+                          }`}
+                        >
+                          <span className="text-base">🐕</span>
+                          <span>펫</span>
                         </button>
                       </div>
+                      <p className="text-[10px] text-zinc-400 mt-1.5 text-center">
+                        {target === 'general' && '👤 성인 모델이 착용한 이미지 (성별 자동 감지)'}
+                        {target === 'kids' && '🧒 아이 모델이 착용한 이미지'}
+                        {target === 'pet' && '🐕 귀여운 반려동물이 착용한 이미지'}
+                      </p>
                     </div>
                   )}
 
