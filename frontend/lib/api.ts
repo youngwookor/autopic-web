@@ -172,6 +172,7 @@ export interface GenerateRequest {
   model_type: 'flash' | 'pro';
   gender?: string;
   category?: string;
+  target?: string;
 }
 
 export interface GenerateResponse {

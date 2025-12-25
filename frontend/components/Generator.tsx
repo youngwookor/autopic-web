@@ -10,20 +10,26 @@ import {
   Camera,
   Settings2,
   LayoutGrid,
-  ChevronDown,
   X,
   Maximize2,
   ChevronLeft,
   ChevronRight,
   Zap,
   Crown,
+  User,
+  Baby,
+  Dog,
 } from 'lucide-react';
 import { generateImages } from '@/lib/api';
 
-// 카테고리 목록
-const CATEGORIES = [
-  '상의', '하의', '원피스', '가방', '신발', 
-  '시계', '주얼리', '아이웨어', '모자', '스카프', '벨트', '소품'
+// 타겟 타입
+type TargetType = 'general' | 'kids' | 'pet';
+
+// 타겟 설정
+const TARGETS = [
+  { id: 'general' as TargetType, label: '일반', icon: User, description: '성인 패션' },
+  { id: 'kids' as TargetType, label: '키즈', icon: Baby, description: '아동/유아' },
+  { id: 'pet' as TargetType, label: '펫', icon: Dog, description: '반려동물' },
 ];
 
 // 로고 컴포넌트
@@ -45,9 +51,8 @@ export default function Generator() {
   const [mainImage, setMainImage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [mode, setMode] = useState<'still' | 'model'>('still');
-  const [gender, setGender] = useState<'female' | 'male'>('female');
-  const [category, setCategory] = useState('상의');
-  const [modelType, setModelType] = useState<'flash' | 'pro'>('flash'); // AI 모델 선택
+  const [target, setTarget] = useState<TargetType>('general');
+  const [modelType, setModelType] = useState<'flash' | 'pro'>('flash');
   const [progress, setProgress] = useState(0);
   const [loadingText, setLoadingText] = useState('');
   const [error, setError] = useState('');
@@ -111,6 +116,24 @@ export default function Generator() {
     setLastResult(null);
   };
 
+  // 타겟 → 백엔드 target 값 변환
+  const getTargetValue = (t: TargetType): string => {
+    switch (t) {
+      case 'kids': return '아동';
+      case 'pet': return '반려동물';
+      default: return '사람';
+    }
+  };
+
+  // 타겟 → 카테고리 변환
+  const getCategoryForTarget = (t: TargetType): string => {
+    switch (t) {
+      case 'kids': return '키즈';
+      case 'pet': return '펫용품';
+      default: return '의류';
+    }
+  };
+
   // 이미지 생성
   const handleGenerate = async () => {
     if (!mainImage) {
@@ -135,12 +158,13 @@ export default function Generator() {
 
     try {
       const result = await generateImages({
-  image_base64: mainImage,
-  mode: mode as 'still' | 'model' | 'editorial_still' | 'editorial_model',
-  model_type: modelType as 'flash' | 'pro',
-  gender: mode === 'model' ? gender : 'auto',
-  category: category,
-});
+        image_base64: mainImage,
+        mode: mode as 'still' | 'model' | 'editorial_still' | 'editorial_model',
+        model_type: modelType as 'flash' | 'pro',
+        gender: 'auto',
+        category: getCategoryForTarget(target),
+        target: getTargetValue(target),
+      });
       
       clearInterval(progressInterval);
       setProgress(100);
@@ -260,54 +284,84 @@ export default function Generator() {
               <Settings2 size={14} /> 2. 제작 옵션
             </label>
 
-            {/* 카테고리 선택 */}
-            <div className="relative">
-              <label className="text-[10px] font-bold text-zinc-400 mb-1.5 block">상품 카테고리</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:border-black transition appearance-none cursor-pointer"
-              >
-                {CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-              <ChevronDown size={14} className="absolute right-4 bottom-3.5 pointer-events-none text-zinc-400" />
+            {/* 타겟 선택 (3개 아이콘) */}
+            <div>
+              <label className="text-[10px] font-bold text-zinc-400 mb-2 block">상품 타입</label>
+              <div className="grid grid-cols-3 gap-2">
+                {TARGETS.map((t) => {
+                  const Icon = t.icon;
+                  const isSelected = target === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setTarget(t.id)}
+                      className={`relative p-4 rounded-2xl border-2 transition-all text-center ${
+                        isSelected
+                          ? t.id === 'pet' 
+                            ? 'border-amber-500 bg-amber-50'
+                            : t.id === 'kids'
+                            ? 'border-pink-500 bg-pink-50'
+                            : 'border-blue-500 bg-blue-50'
+                          : 'border-zinc-200 hover:border-zinc-300'
+                      }`}
+                    >
+                      <Icon 
+                        size={24} 
+                        className={`mx-auto mb-2 ${
+                          isSelected 
+                            ? t.id === 'pet' 
+                              ? 'text-amber-600'
+                              : t.id === 'kids'
+                              ? 'text-pink-600'
+                              : 'text-blue-600'
+                            : 'text-zinc-400'
+                        }`} 
+                      />
+                      <p className={`text-xs font-bold ${isSelected ? 'text-zinc-800' : 'text-zinc-500'}`}>
+                        {t.label}
+                      </p>
+                      <p className="text-[9px] text-zinc-400 mt-0.5">{t.description}</p>
+                      {isSelected && (
+                        <div className={`absolute top-2 right-2 w-2 h-2 rounded-full ${
+                          t.id === 'pet' 
+                            ? 'bg-amber-500'
+                            : t.id === 'kids'
+                            ? 'bg-pink-500'
+                            : 'bg-blue-500'
+                        }`}></div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* 모드 선택 */}
-            <div className="grid grid-cols-2 gap-1 p-1 bg-zinc-100 rounded-xl">
-              <button
-                onClick={() => setMode('still')}
-                className={`py-2.5 text-xs font-bold rounded-lg transition-all ${mode === 'still' ? 'bg-white text-black shadow-sm' : 'text-zinc-400 hover:text-zinc-600'}`}
-              >
-                정물 (STILL)
-              </button>
-              <button
-                onClick={() => setMode('model')}
-                className={`py-2.5 text-xs font-bold rounded-lg transition-all ${mode === 'model' ? 'bg-white text-black shadow-sm' : 'text-zinc-400 hover:text-zinc-600'}`}
-              >
-                모델 (MODEL)
-              </button>
-            </div>
-
-            {/* 성별 선택 (모델 모드일 때만) */}
-            {mode === 'model' && (
-              <div className="flex gap-2 p-1 bg-zinc-100 rounded-xl">
+            <div>
+              <label className="text-[10px] font-bold text-zinc-400 mb-2 block">촬영 모드</label>
+              <div className="grid grid-cols-2 gap-1 p-1 bg-zinc-100 rounded-xl">
                 <button
-                  onClick={() => setGender('female')}
-                  className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition-all ${gender === 'female' ? 'bg-black text-white' : 'text-zinc-400'}`}
+                  onClick={() => setMode('still')}
+                  className={`py-2.5 text-xs font-bold rounded-lg transition-all ${mode === 'still' ? 'bg-white text-black shadow-sm' : 'text-zinc-400 hover:text-zinc-600'}`}
                 >
-                  여성 (FEMALE)
+                  제품 (STILL)
                 </button>
                 <button
-                  onClick={() => setGender('male')}
-                  className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition-all ${gender === 'male' ? 'bg-black text-white' : 'text-zinc-400'}`}
+                  onClick={() => setMode('model')}
+                  className={`py-2.5 text-xs font-bold rounded-lg transition-all ${mode === 'model' ? 'bg-white text-black shadow-sm' : 'text-zinc-400 hover:text-zinc-600'}`}
                 >
-                  남성 (MALE)
+                  {target === 'pet' ? '착샷 (PET)' : target === 'kids' ? '착샷 (KIDS)' : '모델 (MODEL)'}
                 </button>
               </div>
-            )}
+              {/* 타겟별 힌트 */}
+              {mode === 'model' && (
+                <p className="text-[10px] text-zinc-400 mt-2 text-center">
+                  {target === 'pet' && '🐕 귀여운 반려동물이 착용한 이미지가 생성됩니다'}
+                  {target === 'kids' && '🧒 아이 모델이 착용한 이미지가 생성됩니다'}
+                  {target === 'general' && '👤 성인 모델이 착용한 이미지가 생성됩니다 (성별 자동 감지)'}
+                </p>
+              )}
+            </div>
           </div>
 
           {/* 3. AI 모델 선택 */}
