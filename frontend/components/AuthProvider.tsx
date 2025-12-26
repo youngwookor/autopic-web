@@ -98,6 +98,10 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
               name: profile.name || '',
             });
             setBalance(profile.credits || 0);
+            
+            // OAuth 로그인 시 환영 메시지 (리디렉트 후 표시)
+            const { toast } = await import('react-hot-toast');
+            toast.success(`${profile.name || '회원'}님 환영합니다!`);
           }
         } catch (error) {
           console.error('Profile fetch error:', error);

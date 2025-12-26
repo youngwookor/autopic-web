@@ -54,7 +54,7 @@ export default function LoginPage() {
         });
         updateBalance(profile.credits);
         
-        toast.success('로그인 성공!');
+        toast.success(`${profile.name || '회원'}님 환영합니다!`);
         router.push('/');
       }
     } catch (error: any) {

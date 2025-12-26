@@ -155,10 +155,16 @@ export default function Studio() {
     setIsGenerating(true);
     setGeneratedImages([]);
 
-    // 생성 시작 시 결과 섹션으로 스크롤 (모바일)
-    if (isMobile) {
+    // 생성 시작 시 결과 섹션으로 스크롤 (모바일) - 상단 여백 최적화
+    if (isMobile && resultSectionRef.current) {
       setTimeout(() => {
-        resultSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const element = resultSectionRef.current;
+        if (element) {
+          const headerOffset = 100; // 헤더 + 여유 공간
+          const elementPosition = element.getBoundingClientRect().top;
+          const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+          window.scrollTo({ top: offsetPosition, behavior: 'smooth' });
+        }
       }, 100);
     }
 
@@ -192,10 +198,16 @@ export default function Studio() {
       
       toast.success(`이미지 생성 완료! (4장, ${data.credits_used}크레딧 사용)`);
 
-      // 생성 완료 후 결과 섹션으로 스크롤 (모바일)
-      if (isMobile) {
+      // 생성 완료 후 결과 섹션으로 스크롤 (모바일) - 상단 여백 최적화
+      if (isMobile && resultSectionRef.current) {
         setTimeout(() => {
-          resultSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          const element = resultSectionRef.current;
+          if (element) {
+            const headerOffset = 80;
+            const elementPosition = element.getBoundingClientRect().top;
+            const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+            window.scrollTo({ top: offsetPosition, behavior: 'smooth' });
+          }
         }, 100);
       }
       

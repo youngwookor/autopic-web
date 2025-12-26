@@ -90,17 +90,30 @@ export default function Navbar({ isScrolled: propIsScrolled }: NavbarProps) {
     <>
       <nav className={`fixed w-full z-[100] transition-all duration-300 ${scrolled || isMenuOpen ? 'bg-white/80 backdrop-blur-xl py-4 shadow-sm border-b border-zinc-100' : 'bg-transparent py-6'}`}>
         <div className="max-w-[1400px] mx-auto px-6 md:px-8 flex justify-between items-center">
-          {/* Logo */}
-          <Link 
-            href="/" 
-            className="flex items-center gap-2 cursor-pointer relative z-[101]"
-            onClick={() => setIsMenuOpen(false)}
-          >
-            <AutoPicLogo className="w-6 h-6 text-[#87D039]" />
-            <span className="font-black text-xl tracking-tighter text-black uppercase">
-              AUTOPIC
-            </span>
-          </Link>
+          {/* Logo + User Info */}
+          <div className="relative z-[101]">
+            <Link 
+              href="/" 
+              className="flex items-center gap-2 cursor-pointer"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              <AutoPicLogo className="w-6 h-6 text-[#87D039]" />
+              <span className="font-black text-xl tracking-tighter text-black uppercase">
+                AUTOPIC
+              </span>
+            </Link>
+            {/* 모바일 로그인 상태 표시 */}
+            {isAuthenticated && (
+              <div className="md:hidden flex items-center gap-1.5 mt-0.5">
+                <span className="text-[10px] text-zinc-500 truncate max-w-[80px]">
+                  {user?.name || user?.email?.split('@')[0]}
+                </span>
+                <span className="text-[10px] font-bold text-[#87D039]">
+                  {formatNumber(balance?.credits || 0)}C
+                </span>
+              </div>
+            )}
+          </div>
 
           {/* Desktop Menu */}
           <div className="hidden md:flex items-center gap-8">
