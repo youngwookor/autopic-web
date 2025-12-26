@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore, useCreditsStore } from '@/lib/store';
 import { 
   User, CreditCard, Image, Settings, LogOut, 
-  Zap, Crown, ChevronRight, Download,
+  Zap, Crown, ChevronRight,
   ArrowLeft, Sparkles, Key, Monitor
 } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
@@ -40,25 +40,6 @@ interface ApiKey {
   created_at: string;
 }
 
-// localStorage에 인증 토큰이 있는지 확인
-const hasAuthToken = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  
-  // autopic-auth 키 확인
-  const autopicAuth = localStorage.getItem('autopic-auth');
-  if (autopicAuth) return true;
-  
-  // sb- 로 시작하는 Supabase 기본 키 확인
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key && key.startsWith('sb-') && key.includes('auth-token')) {
-      return true;
-    }
-  }
-  
-  return false;
-};
-
 export default function MyPage() {
   const router = useRouter();
   const { user, setUser, logout: storeLogout } = useAuthStore();
@@ -73,143 +54,97 @@ export default function MyPage() {
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-  const loadData = useCallback(async (userId: string) => {
-    try {
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-      
-      if (profileData) {
-        setProfile(profileData);
-        setBalance(profileData.credits || 0);
-      }
-
-      const { data: generationsData } = await supabase
-        .from('generations')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(100);
-      setGenerations(generationsData || []);
-
-      const { data: usagesData } = await supabase
-        .from('usages')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(50);
-      setUsages(usagesData || []);
-
-      try {
-        const keysResponse = await fetch(`${API_URL}/api/keys/${userId}`);
-        if (keysResponse.ok) {
-          const keysData = await keysResponse.json();
-          setApiKeys(keysData.keys || []);
-        }
-      } catch (e) {}
-
-      return true;
-    } catch (error) {
-      console.error('Data load error:', error);
-      return false;
-    }
-  }, [API_URL, setBalance]);
-
-  const setupUser = useCallback(async (session: any) => {
-    const userId = session.user.id;
-    setUser({
-      id: userId,
-      email: session.user.email || '',
-      name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
-    });
-    await loadData(userId);
-    setIsLoading(false);
-  }, [setUser, loadData]);
-
   useEffect(() => {
     let isMounted = true;
-    let pollCount = 0;
-    const maxPolls = 20; // 최대 20번 (총 4초)
-    let pollTimer: NodeJS.Timeout;
 
-    const checkSession = async (): Promise<boolean> => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user && isMounted) {
-        await setupUser(session);
-        return true;
-      }
-      return false;
-    };
-
-    const startPolling = () => {
-      pollTimer = setInterval(async () => {
-        pollCount++;
+    const loadData = async (userId: string) => {
+      try {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single();
         
-        const hasSession = await checkSession();
-        if (hasSession || pollCount >= maxPolls) {
-          clearInterval(pollTimer);
-          
-          if (!hasSession && isMounted) {
-            // 폴링 끝났는데도 세션 없으면 로그인 페이지로
-            router.replace('/login');
-          }
+        if (profileData && isMounted) {
+          setProfile(profileData);
+          setBalance(profileData.credits || 0);
         }
-      }, 200); // 200ms마다 확인
+
+        const { data: generationsData } = await supabase
+          .from('generations')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(100);
+        if (isMounted) setGenerations(generationsData || []);
+
+        const { data: usagesData } = await supabase
+          .from('usages')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (isMounted) setUsages(usagesData || []);
+
+        try {
+          const keysResponse = await fetch(`${API_URL}/api/keys/${userId}`);
+          if (keysResponse.ok) {
+            const keysData = await keysResponse.json();
+            if (isMounted) setApiKeys(keysData.keys || []);
+          }
+        } catch (e) {}
+      } catch (error) {
+        console.error('Data load error:', error);
+      }
     };
 
     const init = async () => {
-      // 1. 먼저 바로 세션 확인
-      const hasSession = await checkSession();
-      if (hasSession) return;
-
-      // 2. 세션 없으면, localStorage에 토큰이 있는지 확인
-      const tokenExists = hasAuthToken();
+      // 간단하게 500ms 대기 후 세션 확인 (세션 복원 시간 확보)
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      if (tokenExists) {
-        // 토큰이 있으면 세션 복원 중일 수 있음 - 폴링 시작
-        console.log('Token found, waiting for session restore...');
-        startPolling();
+      if (!isMounted) return;
+
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user) {
+        const userId = session.user.id;
+        
+        setUser({
+          id: userId,
+          email: session.user.email || '',
+          name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
+        });
+        
+        await loadData(userId);
+        
+        if (isMounted) {
+          setIsLoading(false);
+        }
       } else {
-        // 토큰도 없으면 바로 로그인 페이지로
-        console.log('No token found, redirecting to login');
+        // 세션 없으면 로그인 페이지로
         if (isMounted) {
           router.replace('/login');
         }
       }
     };
 
-    // 약간의 초기 딜레이 후 시작 (DOM 안정화)
-    const initTimer = setTimeout(() => {
-      init();
-    }, 50);
+    init();
 
-    // Auth 상태 변경 리스너
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!isMounted) return;
-        
-        if (event === 'SIGNED_OUT') {
-          router.replace('/login');
-        } else if (event === 'SIGNED_IN' && session?.user && isLoading) {
-          clearInterval(pollTimer);
-          await setupUser(session);
-        }
+    // 로그아웃 감지용 리스너
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT' && isMounted) {
+        router.replace('/login');
       }
-    );
+    });
 
     return () => {
       isMounted = false;
-      clearTimeout(initTimer);
-      clearInterval(pollTimer);
       subscription.unsubscribe();
     };
-  }, [router, setupUser, isLoading]);
+  }, [router, setUser, setBalance, API_URL]);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
-    
     setIsLoggingOut(true);
     
     try {
@@ -218,14 +153,7 @@ export default function MyPage() {
       setBalance(0);
       
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('autopic-auth');
-        localStorage.removeItem('auth-storage');
-        localStorage.removeItem('credits-storage');
-        Object.keys(localStorage).forEach(key => {
-          if (key.startsWith('sb-')) {
-            localStorage.removeItem(key);
-          }
-        });
+        localStorage.clear();
         sessionStorage.clear();
       }
       
@@ -240,24 +168,15 @@ export default function MyPage() {
 
   const formatDate = (dateString: string) => {
     if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('ko-KR', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+    return new Date(dateString).toLocaleDateString('ko-KR', {
+      year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
     });
   };
 
   const getModeName = (mode: string) => {
     const modes: Record<string, string> = {
-      'still': '스틸컷',
-      'product': '정물',
-      'model': '모델컷',
-      'editorial_still': '에디토리얼 스틸',
-      'editorial_product': '화보 정물',
-      'editorial_model': '화보 모델'
+      'still': '스틸컷', 'product': '정물', 'model': '모델컷',
+      'editorial_still': '에디토리얼 스틸', 'editorial_product': '화보 정물', 'editorial_model': '화보 모델'
     };
     return modes[mode] || mode;
   };
@@ -280,17 +199,9 @@ export default function MyPage() {
     { id: 'settings', label: '설정', icon: Settings },
   ];
 
-  const currentCredits = typeof balance === 'number' 
-    ? balance 
-    : (balance?.credits ?? profile?.credits ?? 0);
-
-  const thisMonth = new Date();
-  thisMonth.setDate(1);
-  thisMonth.setHours(0, 0, 0, 0);
-  const thisMonthUsage = usages
-    .filter(u => new Date(u.created_at) >= thisMonth)
-    .reduce((sum, u) => sum + u.credits_used, 0);
-
+  const currentCredits = typeof balance === 'number' ? balance : (balance?.credits ?? profile?.credits ?? 0);
+  const thisMonth = new Date(); thisMonth.setDate(1); thisMonth.setHours(0,0,0,0);
+  const thisMonthUsage = usages.filter(u => new Date(u.created_at) >= thisMonth).reduce((sum, u) => sum + u.credits_used, 0);
   const totalGenerations = generations.length;
 
   return (
@@ -298,21 +209,11 @@ export default function MyPage() {
       <header className="bg-white border-b border-zinc-200">
         <div className="max-w-6xl mx-auto px-4 md:px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/" className="p-2 hover:bg-zinc-100 rounded-lg transition">
-              <ArrowLeft size={20} />
-            </Link>
+            <Link href="/" className="p-2 hover:bg-zinc-100 rounded-lg transition"><ArrowLeft size={20} /></Link>
             <h1 className="text-xl font-bold">마이페이지</h1>
           </div>
-          <button
-            onClick={handleLogout}
-            disabled={isLoggingOut}
-            className="flex items-center gap-2 text-zinc-500 hover:text-red-500 transition text-sm disabled:opacity-50"
-          >
-            {isLoggingOut ? (
-              <div className="w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <LogOut size={18} />
-            )}
+          <button onClick={handleLogout} disabled={isLoggingOut} className="flex items-center gap-2 text-zinc-500 hover:text-red-500 transition text-sm disabled:opacity-50">
+            {isLoggingOut ? <div className="w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" /> : <LogOut size={18} />}
             <span className="hidden md:inline">{isLoggingOut ? '로그아웃 중...' : '로그아웃'}</span>
           </button>
         </div>
@@ -321,17 +222,9 @@ export default function MyPage() {
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8">
         <div className="flex gap-1 md:gap-2 bg-white p-1 md:p-1.5 rounded-xl md:rounded-2xl border border-zinc-200 mb-6 md:mb-8 overflow-x-auto">
           {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as TabType)}
-              className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-2 md:py-2.5 rounded-lg md:rounded-xl text-xs md:text-sm font-medium transition-all whitespace-nowrap ${
-                activeTab === tab.id
-                  ? 'bg-zinc-900 text-white'
-                  : 'text-zinc-500 hover:text-black hover:bg-zinc-50'
-              }`}
-            >
-              <tab.icon size={16} />
-              {tab.label}
+            <button key={tab.id} onClick={() => setActiveTab(tab.id as TabType)}
+              className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-2 md:py-2.5 rounded-lg md:rounded-xl text-xs md:text-sm font-medium transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:text-black hover:bg-zinc-50'}`}>
+              <tab.icon size={16} />{tab.label}
             </button>
           ))}
         </div>
@@ -348,15 +241,10 @@ export default function MyPage() {
                   <p className="text-zinc-500 text-sm md:text-base">{user?.email || profile?.email || ''}</p>
                 </div>
               </div>
-              
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="bg-zinc-50 rounded-xl p-4">
                   <p className="text-zinc-500 text-xs md:text-sm mb-1">가입일</p>
-                  <p className="font-bold text-sm md:text-base">
-                    {profile?.created_at 
-                      ? new Date(profile.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
-                      : '-'}
-                  </p>
+                  <p className="font-bold text-sm md:text-base">{profile?.created_at ? new Date(profile.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) : '-'}</p>
                 </div>
                 <div className="bg-zinc-50 rounded-xl p-4">
                   <p className="text-zinc-500 text-xs md:text-sm mb-1">총 생성 이미지</p>
@@ -373,99 +261,48 @@ export default function MyPage() {
               <p className="text-zinc-400 text-sm mb-2">보유 크레딧</p>
               <p className="text-4xl md:text-5xl font-bold mb-4">{formatNumber(currentCredits)}</p>
               <div className="flex flex-wrap gap-4 md:gap-6 mb-6">
-                <div className="flex items-center gap-2">
-                  <Zap size={16} className="text-yellow-400" />
-                  <span className="text-zinc-400 text-sm">Standard</span>
-                  <span className="font-bold">{formatNumber(currentCredits)}회</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Crown size={16} className="text-purple-400" />
-                  <span className="text-zinc-400 text-sm">Premium</span>
-                  <span className="font-bold">{formatNumber(Math.floor(currentCredits / 3))}회</span>
-                </div>
+                <div className="flex items-center gap-2"><Zap size={16} className="text-yellow-400" /><span className="text-zinc-400 text-sm">Standard</span><span className="font-bold">{formatNumber(currentCredits)}회</span></div>
+                <div className="flex items-center gap-2"><Crown size={16} className="text-purple-400" /><span className="text-zinc-400 text-sm">Premium</span><span className="font-bold">{formatNumber(Math.floor(currentCredits / 3))}회</span></div>
               </div>
-              <Link
-                href="/#pricing"
-                className="inline-flex items-center gap-2 bg-[#87D039] text-black px-6 py-3 rounded-xl font-bold text-sm hover:bg-[#9AE045] transition"
-              >
-                크레딧 충전하기
-                <ChevronRight size={18} />
-              </Link>
+              <Link href="/#pricing" className="inline-flex items-center gap-2 bg-[#87D039] text-black px-6 py-3 rounded-xl font-bold text-sm hover:bg-[#9AE045] transition">크레딧 충전하기<ChevronRight size={18} /></Link>
             </div>
 
             <div className="bg-white rounded-2xl md:rounded-3xl border border-zinc-200 p-6 md:p-8">
               <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Key size={20} />
-                  <h3 className="font-bold text-lg">API 키</h3>
-                  <span className="text-xs text-zinc-500">({apiKeys.filter(k => k.is_active).length}/3)</span>
-                </div>
-                <Link href="/mypage/api-keys" className="text-sm text-[#87D039] font-medium hover:underline">
-                  관리하기
-                </Link>
+                <div className="flex items-center gap-2"><Key size={20} /><h3 className="font-bold text-lg">API 키</h3><span className="text-xs text-zinc-500">({apiKeys.filter(k => k.is_active).length}/3)</span></div>
+                <Link href="/mypage/api-keys" className="text-sm text-[#87D039] font-medium hover:underline">관리하기</Link>
               </div>
-              
               {apiKeys.filter(k => k.is_active).length > 0 ? (
                 <div className="space-y-2 mb-4">
                   {apiKeys.filter(k => k.is_active).slice(0, 2).map((key) => (
                     <div key={key.id} className="flex items-center gap-3 p-3 bg-zinc-50 rounded-xl">
-                      <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                        <Key size={14} className="text-green-600" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{key.name}</p>
-                        <p className="text-xs text-zinc-500 font-mono">{key.key_preview}</p>
-                      </div>
+                      <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center"><Key size={14} className="text-green-600" /></div>
+                      <div className="flex-1 min-w-0"><p className="font-medium text-sm truncate">{key.name}</p><p className="text-xs text-zinc-500 font-mono">{key.key_preview}</p></div>
                       <span className="text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded">활성</span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-6 text-zinc-400 mb-4">
-                  <Key size={32} className="mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">생성된 API 키가 없습니다</p>
-                </div>
+                <div className="text-center py-6 text-zinc-400 mb-4"><Key size={32} className="mx-auto mb-2 opacity-50" /><p className="text-sm">생성된 API 키가 없습니다</p></div>
               )}
-              
-              <Link
-                href="/mypage/api-keys"
-                className="flex items-center justify-center gap-2 w-full py-3 bg-zinc-900 text-white rounded-xl font-medium text-sm hover:bg-black transition"
-              >
-                <Monitor size={16} />
-                설치형 프로그램 연동하기
-              </Link>
+              <Link href="/mypage/api-keys" className="flex items-center justify-center gap-2 w-full py-3 bg-zinc-900 text-white rounded-xl font-medium text-sm hover:bg-black transition"><Monitor size={16} />설치형 프로그램 연동하기</Link>
             </div>
 
             <div className="bg-white rounded-2xl md:rounded-3xl border border-zinc-200 p-6 md:p-8">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-lg">최근 생성 이미지</h3>
-                <button onClick={() => setActiveTab('generations')} className="text-sm text-[#87D039] font-medium hover:underline">
-                  전체보기
-                </button>
+                <button onClick={() => setActiveTab('generations')} className="text-sm text-[#87D039] font-medium hover:underline">전체보기</button>
               </div>
-              
               {generations.length > 0 ? (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
                   {generations.slice(0, 4).map((gen) => (
-                    <div key={gen.id} className="aspect-square rounded-xl overflow-hidden bg-zinc-100 relative group">
-                      {gen.generated_image_url ? (
-                        <img src={gen.generated_image_url} alt="Generated" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-zinc-400">
-                          <Image size={32} />
-                        </div>
-                      )}
+                    <div key={gen.id} className="aspect-square rounded-xl overflow-hidden bg-zinc-100">
+                      {gen.generated_image_url ? <img src={gen.generated_image_url} alt="Generated" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-zinc-400"><Image size={32} /></div>}
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-12 text-zinc-400">
-                  <Sparkles size={48} className="mx-auto mb-4 opacity-50" />
-                  <p>아직 생성된 이미지가 없어요</p>
-                  <Link href="/#studio" className="inline-block mt-4 text-[#87D039] font-medium hover:underline">
-                    첫 이미지 생성하기 →
-                  </Link>
-                </div>
+                <div className="text-center py-12 text-zinc-400"><Sparkles size={48} className="mx-auto mb-4 opacity-50" /><p>아직 생성된 이미지가 없어요</p><Link href="/#studio" className="inline-block mt-4 text-[#87D039] font-medium hover:underline">첫 이미지 생성하기 →</Link></div>
               )}
             </div>
           </div>
@@ -478,27 +315,13 @@ export default function MyPage() {
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {generations.map((gen) => (
                   <div key={gen.id} className="bg-zinc-50 rounded-xl overflow-hidden">
-                    <div className="aspect-square relative">
-                      {gen.generated_image_url ? (
-                        <img src={gen.generated_image_url} alt="Generated" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-zinc-400 bg-zinc-100">
-                          <Image size={32} />
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-3">
-                      <span className="text-xs font-medium bg-zinc-200 px-2 py-0.5 rounded">{getModeName(gen.mode)}</span>
-                      <p className="text-xs text-zinc-500 mt-2">{formatDate(gen.created_at)}</p>
-                    </div>
+                    <div className="aspect-square">{gen.generated_image_url ? <img src={gen.generated_image_url} alt="Generated" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-zinc-400 bg-zinc-100"><Image size={32} /></div>}</div>
+                    <div className="p-3"><span className="text-xs font-medium bg-zinc-200 px-2 py-0.5 rounded">{getModeName(gen.mode)}</span><p className="text-xs text-zinc-500 mt-2">{formatDate(gen.created_at)}</p></div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-16 text-zinc-400">
-                <Image size={48} className="mx-auto mb-4 opacity-50" />
-                <p>생성 내역이 없습니다</p>
-              </div>
+              <div className="text-center py-16 text-zinc-400"><Image size={48} className="mx-auto mb-4 opacity-50" /><p>생성 내역이 없습니다</p></div>
             )}
           </div>
         )}
@@ -507,21 +330,11 @@ export default function MyPage() {
           <div className="space-y-6">
             <div className="bg-zinc-900 text-white rounded-2xl md:rounded-3xl p-6 md:p-8">
               <div className="grid md:grid-cols-3 gap-6">
-                <div>
-                  <p className="text-zinc-400 text-sm mb-1">현재 잔액</p>
-                  <p className="text-3xl font-bold">{formatNumber(currentCredits)}</p>
-                </div>
-                <div>
-                  <p className="text-zinc-400 text-sm mb-1">이번 달 사용</p>
-                  <p className="text-3xl font-bold">{formatNumber(thisMonthUsage)}</p>
-                </div>
-                <div>
-                  <p className="text-zinc-400 text-sm mb-1">총 사용량</p>
-                  <p className="text-3xl font-bold">{formatNumber(usages.reduce((sum, u) => sum + u.credits_used, 0))}</p>
-                </div>
+                <div><p className="text-zinc-400 text-sm mb-1">현재 잔액</p><p className="text-3xl font-bold">{formatNumber(currentCredits)}</p></div>
+                <div><p className="text-zinc-400 text-sm mb-1">이번 달 사용</p><p className="text-3xl font-bold">{formatNumber(thisMonthUsage)}</p></div>
+                <div><p className="text-zinc-400 text-sm mb-1">총 사용량</p><p className="text-3xl font-bold">{formatNumber(usages.reduce((sum, u) => sum + u.credits_used, 0))}</p></div>
               </div>
             </div>
-
             <div className="bg-white rounded-2xl md:rounded-3xl border border-zinc-200 p-6 md:p-8">
               <h3 className="font-bold text-lg mb-6">사용 내역</h3>
               {usages.length > 0 ? (
@@ -529,23 +342,15 @@ export default function MyPage() {
                   {usages.map((usage) => (
                     <div key={usage.id} className="flex items-center justify-between p-4 bg-zinc-50 rounded-xl">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-zinc-200 rounded-full flex items-center justify-center">
-                          <Sparkles size={18} className="text-zinc-600" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-sm">이미지 생성</p>
-                          <p className="text-xs text-zinc-500">{formatDate(usage.created_at)}</p>
-                        </div>
+                        <div className="w-10 h-10 bg-zinc-200 rounded-full flex items-center justify-center"><Sparkles size={18} className="text-zinc-600" /></div>
+                        <div><p className="font-medium text-sm">이미지 생성</p><p className="text-xs text-zinc-500">{formatDate(usage.created_at)}</p></div>
                       </div>
                       <span className="font-bold text-red-500">-{usage.credits_used}</span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-16 text-zinc-400">
-                  <CreditCard size={48} className="mx-auto mb-4 opacity-50" />
-                  <p>사용 내역이 없습니다</p>
-                </div>
+                <div className="text-center py-16 text-zinc-400"><CreditCard size={48} className="mx-auto mb-4 opacity-50" /><p>사용 내역이 없습니다</p></div>
               )}
             </div>
           </div>
@@ -556,52 +361,17 @@ export default function MyPage() {
             <div className="bg-white rounded-2xl md:rounded-3xl border border-zinc-200 p-6 md:p-8">
               <h3 className="font-bold text-lg mb-6">프로필 설정</h3>
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-zinc-700 mb-2">이름</label>
-                  <input
-                    type="text"
-                    defaultValue={profile?.name || ''}
-                    className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-[#87D039]"
-                    placeholder="이름을 입력하세요"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-700 mb-2">이메일</label>
-                  <input
-                    type="email"
-                    value={user?.email || profile?.email || ''}
-                    disabled
-                    className="w-full px-4 py-3 rounded-xl border border-zinc-200 bg-zinc-50 text-zinc-500"
-                  />
-                </div>
-                <button
-                  onClick={() => toast('프로필 저장 기능은 준비 중입니다', { icon: '🚧' })}
-                  className="px-6 py-3 bg-[#87D039] text-black font-bold rounded-xl hover:bg-[#9AE045] transition"
-                >
-                  저장하기
-                </button>
+                <div><label className="block text-sm font-medium text-zinc-700 mb-2">이름</label><input type="text" defaultValue={profile?.name || ''} className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-[#87D039]" placeholder="이름을 입력하세요" /></div>
+                <div><label className="block text-sm font-medium text-zinc-700 mb-2">이메일</label><input type="email" value={user?.email || profile?.email || ''} disabled className="w-full px-4 py-3 rounded-xl border border-zinc-200 bg-zinc-50 text-zinc-500" /></div>
+                <button onClick={() => toast('프로필 저장 기능은 준비 중입니다', { icon: '🚧' })} className="px-6 py-3 bg-[#87D039] text-black font-bold rounded-xl hover:bg-[#9AE045] transition">저장하기</button>
               </div>
             </div>
-
             <div className="bg-white rounded-2xl md:rounded-3xl border border-zinc-200 p-6 md:p-8">
               <h3 className="font-bold text-lg mb-6">계정 관리</h3>
-              <div className="space-y-4">
-                <button
-                  onClick={handleLogout}
-                  disabled={isLoggingOut}
-                  className="w-full flex items-center justify-between p-4 bg-zinc-50 rounded-xl hover:bg-zinc-100 transition disabled:opacity-50"
-                >
-                  <div className="flex items-center gap-3">
-                    {isLoggingOut ? (
-                      <div className="w-5 h-5 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <LogOut size={20} className="text-zinc-500" />
-                    )}
-                    <span className="font-medium">{isLoggingOut ? '로그아웃 중...' : '로그아웃'}</span>
-                  </div>
-                  <ChevronRight size={20} className="text-zinc-400" />
-                </button>
-              </div>
+              <button onClick={handleLogout} disabled={isLoggingOut} className="w-full flex items-center justify-between p-4 bg-zinc-50 rounded-xl hover:bg-zinc-100 transition disabled:opacity-50">
+                <div className="flex items-center gap-3">{isLoggingOut ? <div className="w-5 h-5 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" /> : <LogOut size={20} className="text-zinc-500" />}<span className="font-medium">{isLoggingOut ? '로그아웃 중...' : '로그아웃'}</span></div>
+                <ChevronRight size={20} className="text-zinc-400" />
+              </button>
             </div>
           </div>
         )}
