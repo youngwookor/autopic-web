@@ -23,67 +23,49 @@ import toast from 'react-hot-toast';
 import Link from 'next/link';
 import JSZip from 'jszip';
 
-// 모델 설정 - Standard/Premium
 const MODEL_CONFIG = {
   standard: { credits: 1 },
   premium: { credits: 3 },
 };
 
-// 백엔드 API URL
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export default function Studio() {
   const router = useRouter();
-  
-  // Store에서 인증 상태 가져오기
   const { user, isAuthenticated } = useAuthStore();
   const { balance, setBalance } = useCreditsStore();
   
   const [mainImage, setMainImage] = useState<string | null>(null);
   const [subImage, setSubImage] = useState<string | null>(null);
-  
-  // 생성 옵션: 주체(정물/인물) + 스타일(일반/화보)
   const [subject, setSubject] = useState<'product' | 'model'>('product');
   const [style, setStyle] = useState<'basic' | 'editorial'>('basic');
   const [modelType, setModelType] = useState<'standard' | 'premium'>('premium');
   const [target, setTarget] = useState<'general' | 'kids' | 'pet'>('general');
-  
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState<number>(0);
-  
   const [isDraggingMain, setIsDraggingMain] = useState(false);
   const [isDraggingSub, setIsDraggingSub] = useState(false);
-
-  // 호버 상태 (PC 전용)
   const [isHovered, setIsHovered] = useState(false);
-  
-  // 모달 상태 (PC 전용)
   const [isModalOpen, setIsModalOpen] = useState(false);
-
-  // 다운로드 상태
   const [isDownloading, setIsDownloading] = useState(false);
-
-  // 모바일 감지
   const [isMobile, setIsMobile] = useState(false);
 
   const mainInputRef = useRef<HTMLInputElement>(null);
   const subInputRef = useRef<HTMLInputElement>(null);
+  const generateButtonRef = useRef<HTMLDivElement>(null);
+  const resultSectionRef = useRef<HTMLDivElement>(null);
 
   const requiredCredits = MODEL_CONFIG[modelType].credits;
   const credits = balance?.credits || 0;
 
-  // 모바일 감지
   useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // mode 값 계산 (백엔드 전송용)
   const getMode = () => {
     if (subject === 'product') {
       return style === 'editorial' ? 'editorial_product' : 'product';
@@ -92,14 +74,24 @@ export default function Studio() {
     }
   };
 
+  // 이미지 업로드 후 생성 버튼으로 스크롤
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'main' | 'sub') => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
-        if (type === 'main') setMainImage(result);
-        else setSubImage(result);
+        if (type === 'main') {
+          setMainImage(result);
+          // 모바일에서 이미지 업로드 후 생성 버튼으로 스크롤
+          if (isMobile) {
+            setTimeout(() => {
+              generateButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 300);
+          }
+        } else {
+          setSubImage(result);
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -123,8 +115,16 @@ export default function Studio() {
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
-        if (type === 'main') setMainImage(result);
-        else setSubImage(result);
+        if (type === 'main') {
+          setMainImage(result);
+          if (isMobile) {
+            setTimeout(() => {
+              generateButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 300);
+          }
+        } else {
+          setSubImage(result);
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -135,7 +135,6 @@ export default function Studio() {
     else setSubImage(null);
   };
 
-  // 이미지 생성 핸들러
   const handleGenerate = async () => {
     if (!mainImage) {
       toast.error('이미지를 먼저 업로드해주세요');
@@ -156,10 +155,16 @@ export default function Studio() {
     setIsGenerating(true);
     setGeneratedImages([]);
 
+    // 생성 시작 시 결과 섹션으로 스크롤 (모바일)
+    if (isMobile) {
+      setTimeout(() => {
+        resultSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    }
+
     try {
       const mode = getMode();
       
-      // 백엔드 API 호출
       const response = await fetch(`${API_URL}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -186,6 +191,13 @@ export default function Studio() {
       setBalance(data.remaining_credits);
       
       toast.success(`이미지 생성 완료! (4장, ${data.credits_used}크레딧 사용)`);
+
+      // 생성 완료 후 결과 섹션으로 스크롤 (모바일)
+      if (isMobile) {
+        setTimeout(() => {
+          resultSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+      }
       
     } catch (error: any) {
       console.error('Generation error:', error);
@@ -195,7 +207,6 @@ export default function Studio() {
     }
   };
 
-  // 단일 이미지 다운로드
   const handleDownload = (index?: number) => {
     const targetIndex = index !== undefined ? index : selectedImageIndex;
     const image = generatedImages[targetIndex];
@@ -210,7 +221,6 @@ export default function Studio() {
     toast.success('다운로드 완료!');
   };
 
-  // ZIP 압축 다운로드 (PC 전용)
   const handleDownloadAll = async () => {
     if (generatedImages.length === 0) return;
     
@@ -238,14 +248,12 @@ export default function Studio() {
       
       toast.success('전체 이미지 다운로드 완료!');
     } catch (error) {
-      console.error('ZIP download error:', error);
       toast.error('다운로드 실패. 다시 시도해주세요.');
     } finally {
       setIsDownloading(false);
     }
   };
 
-  // 슬라이드 이동
   const goToPrevImage = () => {
     setSelectedImageIndex((prev) => (prev === 0 ? generatedImages.length - 1 : prev - 1));
   };
@@ -254,7 +262,6 @@ export default function Studio() {
     setSelectedImageIndex((prev) => (prev === generatedImages.length - 1 ? 0 : prev + 1));
   };
 
-  // 키보드 이벤트 (PC 전용)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (generatedImages.length === 0) return;
@@ -262,23 +269,18 @@ export default function Studio() {
       if (e.key === 'ArrowRight') goToNextImage();
       if (e.key === 'Escape') setIsModalOpen(false);
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [generatedImages.length]);
 
-  // 이미지 클릭 핸들러 (PC만 모달 열기)
   const handleImageClick = () => {
-    if (!isMobile) {
-      setIsModalOpen(true);
-    }
+    if (!isMobile) setIsModalOpen(true);
   };
 
   return (
     <>
       <section id="studio" className="py-12 md:py-16 bg-white px-4 md:px-6">
         <div className="max-w-[1400px] mx-auto">
-          {/* Section Header */}
           <div className="text-center mb-6 md:mb-8">
             <span className="inline-block px-3 py-1 rounded-full border border-zinc-200 text-[10px] font-bold uppercase tracking-widest bg-zinc-50 mb-2 md:mb-3 text-zinc-500">
               AI Studio
@@ -287,13 +289,11 @@ export default function Studio() {
             <p className="text-zinc-500 text-sm md:text-lg">상품 사진을 업로드하고 전문 스튜디오 퀄리티의 이미지를 생성하세요.</p>
           </div>
 
-          {/* Studio Container */}
           <div className="bg-zinc-50 rounded-2xl md:rounded-[32px] border border-zinc-200 overflow-hidden">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-0">
               
               {/* Left: Controls */}
               <div className="p-4 md:p-6 lg:p-7 border-b lg:border-b-0 lg:border-r border-zinc-200">
-                {/* Credits Display */}
                 {isAuthenticated && (
                   <div className="flex items-center justify-between mb-4 md:mb-5 pb-3 md:pb-4 border-b border-zinc-200">
                     <span className="text-xs md:text-sm font-medium text-zinc-500">보유 크레딧</span>
@@ -303,14 +303,12 @@ export default function Studio() {
                   </div>
                 )}
 
-                {/* Image Upload Section */}
                 <div className="mb-4 md:mb-5">
                   <h3 className="text-sm md:text-base font-bold text-zinc-900 mb-2 md:mb-3 flex items-center gap-2">
                     <Upload size={14} className="text-[#87D039] md:w-4 md:h-4" />
                     사진 업로드
                   </h3>
 
-                  {/* Main Image */}
                   <div className="mb-2 md:mb-3">
                     <label className="text-xs md:text-sm font-medium text-zinc-600 mb-1.5 md:mb-2 block">메인 이미지 (필수)</label>
                     <div 
@@ -337,7 +335,6 @@ export default function Studio() {
                     </div>
                   </div>
 
-                  {/* Sub Image */}
                   <div>
                     <label className="text-xs md:text-sm font-medium text-zinc-600 mb-1.5 md:mb-2 block">후면/디테일 이미지 (선택)</label>
                     <div 
@@ -366,35 +363,25 @@ export default function Studio() {
                   </div>
                 </div>
 
-                {/* Options Section */}
                 <div className="space-y-3 md:space-y-4">
                   <h3 className="text-sm md:text-base font-bold text-zinc-900 flex items-center gap-2">
                     <Sparkles size={14} className="text-[#87D039] md:w-4 md:h-4" />
                     생성 옵션
                   </h3>
 
-                  {/* AI Model Selection */}
                   <div>
                     <label className="text-xs md:text-sm font-medium text-zinc-600 mb-1.5 md:mb-2 block">AI 모델</label>
                     <div className="grid grid-cols-2 gap-2 md:gap-3">
                       <button 
                         onClick={() => setModelType('standard')} 
-                        className={`py-2 md:py-2.5 px-3 md:px-4 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 md:gap-2 border ${
-                          modelType === 'standard' 
-                            ? 'bg-zinc-900 text-white border-zinc-900' 
-                            : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'
-                        }`}
+                        className={`py-2 md:py-2.5 px-3 md:px-4 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 md:gap-2 border ${modelType === 'standard' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}
                       >
                         <Zap size={12} className="md:w-3.5 md:h-3.5" />
                         Standard · 1크레딧
                       </button>
                       <button 
                         onClick={() => setModelType('premium')} 
-                        className={`py-2 md:py-2.5 px-3 md:px-4 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 md:gap-2 border ${
-                          modelType === 'premium' 
-                            ? 'bg-zinc-900 text-white border-zinc-900' 
-                            : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'
-                        }`}
+                        className={`py-2 md:py-2.5 px-3 md:px-4 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 md:gap-2 border ${modelType === 'premium' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}
                       >
                         <Crown size={12} className="md:w-3.5 md:h-3.5" />
                         Premium · 3크레딧
@@ -402,56 +389,37 @@ export default function Studio() {
                     </div>
                   </div>
 
-                  {/* 생성 유형: 주체 + 스타일 */}
                   <div className="grid grid-cols-2 gap-2 md:gap-3">
-                    {/* 주체 선택 (정물/인물) */}
                     <div>
                       <label className="text-xs md:text-sm font-medium text-zinc-600 mb-1.5 md:mb-2 block">생성 유형</label>
                       <div className="grid grid-cols-2 gap-1">
                         <button 
                           onClick={() => setSubject('product')}
-                          className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
-                            subject === 'product' 
-                              ? 'bg-zinc-900 text-white' 
-                              : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-                          }`}
+                          className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${subject === 'product' ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
                         >
                           🖼️ 정물
                         </button>
                         <button 
                           onClick={() => setSubject('model')}
-                          className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
-                            subject === 'model' 
-                              ? 'bg-zinc-900 text-white' 
-                              : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-                          }`}
+                          className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${subject === 'model' ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
                         >
                           👤 인물
                         </button>
                       </div>
                     </div>
 
-                    {/* 스타일 선택 (일반/화보) */}
                     <div>
                       <label className="text-xs md:text-sm font-medium text-zinc-600 mb-1.5 md:mb-2 block">스타일</label>
                       <div className="grid grid-cols-2 gap-1">
                         <button 
                           onClick={() => setStyle('basic')}
-                          className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
-                            style === 'basic' 
-                              ? 'bg-zinc-900 text-white' 
-                              : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-                          }`}
+                          className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${style === 'basic' ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
                         >
                           📷 일반
                         </button>
                         <button 
                           onClick={() => setStyle('editorial')}
-                          className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
-                            style === 'editorial' 
-                              ? 'bg-zinc-900 text-white' 
-                              : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-                          }`}
+                          className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${style === 'editorial' ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
                         >
                           ✨ 화보
                         </button>
@@ -459,7 +427,6 @@ export default function Studio() {
                     </div>
                   </div>
 
-                  {/* 선택된 옵션 표시 */}
                   <div className="bg-zinc-100 rounded-xl px-3 py-2">
                     <p className="text-xs text-zinc-600">
                       선택: <span className="font-bold text-zinc-900">
@@ -474,62 +441,46 @@ export default function Studio() {
                     </p>
                   </div>
 
-                  {/* Gender Selection (for model modes) */}
                   {subject === 'model' && (
                     <div>
                       <label className="text-xs md:text-sm font-medium text-zinc-600 mb-1.5 md:mb-2 block">상품 타입</label>
                       <div className="grid grid-cols-3 gap-2 md:gap-3">
                         <button 
                           onClick={() => setTarget('general')} 
-                          className={`py-2 md:py-2.5 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all border flex flex-col items-center gap-1 ${
-                            target === 'general' 
-                              ? 'bg-blue-500 text-white border-blue-500' 
-                              : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'
-                          }`}
+                          className={`py-2 md:py-2.5 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all border flex flex-col items-center gap-1 ${target === 'general' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}
                         >
                           <span className="text-base">👤</span>
                           <span>일반</span>
                         </button>
                         <button 
                           onClick={() => setTarget('kids')} 
-                          className={`py-2 md:py-2.5 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all border flex flex-col items-center gap-1 ${
-                            target === 'kids' 
-                              ? 'bg-pink-500 text-white border-pink-500' 
-                              : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'
-                          }`}
+                          className={`py-2 md:py-2.5 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all border flex flex-col items-center gap-1 ${target === 'kids' ? 'bg-pink-500 text-white border-pink-500' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}
                         >
                           <span className="text-base">🧒</span>
                           <span>키즈</span>
                         </button>
                         <button 
                           onClick={() => setTarget('pet')} 
-                          className={`py-2 md:py-2.5 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all border flex flex-col items-center gap-1 ${
-                            target === 'pet' 
-                              ? 'bg-amber-500 text-white border-amber-500' 
-                              : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'
-                          }`}
+                          className={`py-2 md:py-2.5 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all border flex flex-col items-center gap-1 ${target === 'pet' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}
                         >
                           <span className="text-base">🐕</span>
                           <span>펫</span>
                         </button>
                       </div>
-                      <p className="text-[10px] text-zinc-400 mt-1.5 text-center">
-                        {target === 'general' && '👤 성인 모델이 착용한 이미지 (성별 자동 감지)'}
-                        {target === 'kids' && '🧒 아이 모델이 착용한 이미지'}
-                        {target === 'pet' && '🐕 귀여운 반려동물이 착용한 이미지'}
-                      </p>
                     </div>
                   )}
 
-                  {/* Generate Button */}
-                  <button 
-                    onClick={handleGenerate}
-                    disabled={isGenerating || !mainImage}
-                    className="w-full py-3 md:py-3.5 bg-[#87D039] text-black rounded-xl md:rounded-2xl font-bold text-sm md:text-base hover:bg-[#9AE045] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    {isGenerating ? <Loader2 className="animate-spin" size={16}/> : <Sparkles size={16}/>}
-                    {isGenerating ? '생성 중...' : `이미지 생성 (${requiredCredits}크레딧)`}
-                  </button>
+                  {/* 생성 버튼 - ref 추가 */}
+                  <div ref={generateButtonRef}>
+                    <button 
+                      onClick={handleGenerate}
+                      disabled={isGenerating || !mainImage}
+                      className="w-full py-3 md:py-3.5 bg-[#87D039] text-black rounded-xl md:rounded-2xl font-bold text-sm md:text-base hover:bg-[#9AE045] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {isGenerating ? <Loader2 className="animate-spin" size={16}/> : <Sparkles size={16}/>}
+                      {isGenerating ? '생성 중...' : `이미지 생성 (${requiredCredits}크레딧)`}
+                    </button>
+                  </div>
                   
                   {!isAuthenticated && (
                     <p className="text-center text-xs md:text-sm text-zinc-500">
@@ -539,13 +490,12 @@ export default function Studio() {
                 </div>
               </div>
 
-              {/* Right: Preview */}
-              <div className="p-4 md:p-6 lg:p-7 bg-white flex flex-col">
+              {/* Right: Preview - ref 추가 */}
+              <div ref={resultSectionRef} className="p-4 md:p-6 lg:p-7 bg-white flex flex-col">
                 <div className="flex items-center justify-between mb-3 md:mb-4">
                   <h3 className="text-sm md:text-base font-bold text-zinc-900">생성 결과</h3>
                   {generatedImages.length > 0 && (
                     <>
-                      {/* 모바일: 선택된 이미지 다운로드 */}
                       <button 
                         onClick={() => handleDownload()}
                         className="flex md:hidden items-center gap-1.5 text-xs font-medium text-black bg-[#87D039] px-3 py-1.5 rounded-full hover:bg-[#9AE045] transition-colors"
@@ -553,17 +503,12 @@ export default function Studio() {
                         <Download size={12} />
                         다운로드
                       </button>
-                      {/* PC: 전체 다운로드 */}
                       <button 
                         onClick={handleDownloadAll}
                         disabled={isDownloading}
                         className="hidden md:flex items-center gap-2 text-sm font-medium text-black bg-[#87D039] px-4 py-2 rounded-full hover:bg-[#9AE045] transition-colors disabled:opacity-50"
                       >
-                        {isDownloading ? (
-                          <Loader2 size={14} className="animate-spin" />
-                        ) : (
-                          <Package size={14} />
-                        )}
+                        {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Package size={14} />}
                         {isDownloading ? '압축 중...' : '전체 다운로드'}
                       </button>
                     </>
@@ -582,7 +527,6 @@ export default function Studio() {
                     </div>
                   ) : generatedImages.length > 0 ? (
                     <>
-                      {/* Main Preview */}
                       <div 
                         className={`relative flex-1 flex items-center justify-center mb-3 md:mb-4 bg-zinc-50 rounded-xl md:rounded-2xl p-3 md:p-4 min-h-[200px] md:min-h-[280px] overflow-hidden ${!isMobile ? 'cursor-pointer' : ''}`}
                         onMouseEnter={() => !isMobile && setIsHovered(true)}
@@ -590,16 +534,12 @@ export default function Studio() {
                         onClick={handleImageClick}
                         onTouchStart={(e) => {
                           if (isMobile) {
-                            const touch = e.touches[0];
-                            (e.currentTarget as any).touchStartX = touch.clientX;
+                            (e.currentTarget as any).touchStartX = e.touches[0].clientX;
                           }
                         }}
                         onTouchEnd={(e) => {
                           if (isMobile) {
-                            const touchStartX = (e.currentTarget as any).touchStartX;
-                            const touchEndX = e.changedTouches[0].clientX;
-                            const diff = touchStartX - touchEndX;
-                            
+                            const diff = (e.currentTarget as any).touchStartX - e.changedTouches[0].clientX;
                             if (Math.abs(diff) > 50) {
                               if (diff > 0) goToNextImage();
                               else goToPrevImage();
@@ -607,21 +547,16 @@ export default function Studio() {
                           }
                         }}
                       >
-                        {/* 슬라이드 네비게이션 - 모바일에선 항상 표시, PC에선 호버 시 */}
                         {generatedImages.length > 1 && (
                           <>
                             <button 
-                              className={`absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 p-2 rounded-full transition z-10 ${
-                                isHovered ? 'opacity-100' : 'md:opacity-0 opacity-70'
-                              }`}
+                              className={`absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 p-2 rounded-full transition z-10 ${isHovered ? 'opacity-100' : 'md:opacity-0 opacity-70'}`}
                               onClick={(e) => { e.stopPropagation(); goToPrevImage(); }}
                             >
                               <ChevronLeft size={20} className="text-white" />
                             </button>
                             <button 
-                              className={`absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 p-2 rounded-full transition z-10 ${
-                                isHovered ? 'opacity-100' : 'md:opacity-0 opacity-70'
-                              }`}
+                              className={`absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 p-2 rounded-full transition z-10 ${isHovered ? 'opacity-100' : 'md:opacity-0 opacity-70'}`}
                               onClick={(e) => { e.stopPropagation(); goToNextImage(); }}
                             >
                               <ChevronRight size={20} className="text-white" />
@@ -629,7 +564,6 @@ export default function Studio() {
                           </>
                         )}
                         
-                        {/* 인디케이터 */}
                         {generatedImages.length > 1 && (
                           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
                             {generatedImages.map((_, idx) => (
@@ -645,12 +579,9 @@ export default function Studio() {
                         <img 
                           src={generatedImages[selectedImageIndex]} 
                           alt={`Generated ${selectedImageIndex + 1}`} 
-                          className={`max-w-full max-h-[250px] md:max-h-[320px] rounded-lg md:rounded-xl shadow-lg object-contain transition-transform duration-300 ${
-                            isHovered && !isMobile ? 'scale-105' : 'scale-100'
-                          }`}
+                          className={`max-w-full max-h-[250px] md:max-h-[320px] rounded-lg md:rounded-xl shadow-lg object-contain transition-transform duration-300 ${isHovered && !isMobile ? 'scale-105' : 'scale-100'}`}
                         />
 
-                        {/* 클릭하면 확대 힌트 - PC만 */}
                         {isHovered && !isMobile && (
                           <div className="absolute top-3 right-3 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full">
                             클릭하여 전체화면
@@ -658,7 +589,6 @@ export default function Studio() {
                         )}
                       </div>
                       
-                      {/* Thumbnails - 모바일에서 다운로드 아이콘 숨김 */}
                       <div className="grid grid-cols-4 gap-2 md:gap-3">
                         {generatedImages.map((img, index) => (
                           <div 
@@ -667,7 +597,6 @@ export default function Studio() {
                             className={`relative aspect-square rounded-lg md:rounded-xl overflow-hidden cursor-pointer transition-all ${selectedImageIndex === index ? 'ring-2 md:ring-3 ring-[#87D039] shadow-lg' : 'ring-1 ring-zinc-200 hover:ring-zinc-400'}`}
                           >
                             <img src={img} alt={`Thumbnail ${index + 1}`} className="w-full h-full object-cover" />
-                            {/* PC에서만 개별 다운로드 버튼 표시 */}
                             <button 
                               onClick={(e) => { e.stopPropagation(); handleDownload(index); }}
                               className="absolute bottom-1 right-1 bg-black/70 text-white p-1.5 rounded-lg hover:bg-black transition-colors hidden md:block"
@@ -698,13 +627,12 @@ export default function Studio() {
         </div>
       </section>
 
-      {/* 전체화면 모달 - PC 전용 */}
+      {/* PC 전용 전체화면 모달 */}
       {isModalOpen && !isMobile && generatedImages.length > 0 && (
         <div 
           className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center"
           onClick={() => setIsModalOpen(false)}
         >
-          {/* 닫기 버튼 */}
           <button 
             className="absolute top-4 right-4 text-white/70 hover:text-white p-2 hover:bg-white/10 rounded-full transition z-20"
             onClick={() => setIsModalOpen(false)}
@@ -712,7 +640,6 @@ export default function Studio() {
             <X size={28} />
           </button>
 
-          {/* 이전 버튼 */}
           <button 
             className="absolute left-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-3 hover:bg-white/10 rounded-full transition z-20"
             onClick={(e) => { e.stopPropagation(); goToPrevImage(); }}
@@ -720,7 +647,6 @@ export default function Studio() {
             <ChevronLeft size={32} />
           </button>
 
-          {/* 이미지 */}
           <div className="flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
             <img 
               src={generatedImages[selectedImageIndex]} 
@@ -728,7 +654,6 @@ export default function Studio() {
               className="max-w-[90vw] max-h-[80vh] object-contain rounded-lg"
             />
             
-            {/* 인디케이터 */}
             <div className="flex gap-2 mt-4">
               {generatedImages.map((_, idx) => (
                 <button
@@ -739,7 +664,6 @@ export default function Studio() {
               ))}
             </div>
             
-            {/* 다운로드 버튼 */}
             <button
               onClick={() => handleDownload(selectedImageIndex)}
               className="mt-4 flex items-center gap-2 bg-[#87D039] text-black px-6 py-2.5 rounded-full font-bold text-sm hover:bg-[#9AE045] transition"
@@ -749,7 +673,6 @@ export default function Studio() {
             </button>
           </div>
 
-          {/* 다음 버튼 */}
           <button 
             className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-3 hover:bg-white/10 rounded-full transition z-20"
             onClick={(e) => { e.stopPropagation(); goToNextImage(); }}
