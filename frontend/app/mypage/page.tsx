@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
@@ -51,13 +51,7 @@ export default function MyPage() {
   const [profile, setProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  
-  // 디버그용 상태
-  const [debugLog, setDebugLog] = useState<string[]>([]);
-  const addDebug = (msg: string) => {
-    const time = new Date().toLocaleTimeString();
-    setDebugLog(prev => [...prev, `[${time}] ${msg}`]);
-  };
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -98,109 +92,66 @@ export default function MyPage() {
           setApiKeys(keysData.keys || []);
         }
       } catch (e) {}
+      
+      return true;
     } catch (error) {
       console.error('Data load error:', error);
+      return false;
     }
   }, [API_URL, setBalance]);
 
+  // 세션 체크 및 데이터 로드 - 단순화
   useEffect(() => {
-    let isMounted = true;
-    
-    addDebug('useEffect 시작');
+    // 이미 데이터 로드됐으면 스킵
+    if (dataLoaded) return;
 
-    const init = async () => {
-      addDebug('init 함수 시작');
-      
-      // 1. 먼저 localStorage에서 Supabase 토큰 확인
-      const storageKey = 'autopic-auth';
-      const storedSession = localStorage.getItem(`sb-${process.env.NEXT_PUBLIC_SUPABASE_URL?.split('//')[1]?.split('.')[0]}-auth-token`);
-      addDebug(`localStorage 토큰: ${storedSession ? '있음' : '없음'}`);
-      
-      // 2. onAuthStateChange 설정 (이벤트 기반)
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(
-        async (event, session) => {
-          if (!isMounted) return;
-          
-          addDebug(`Auth 이벤트: ${event}, 세션: ${session ? '있음' : '없음'}`);
-          
-          if (event === 'INITIAL_SESSION') {
-            if (session?.user) {
-              addDebug(`INITIAL_SESSION - 유저 ID: ${session.user.id}`);
-              
-              setUser({
-                id: session.user.id,
-                email: session.user.email || '',
-                name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
-              });
-              
-              await loadData(session.user.id);
-              
-              if (isMounted) {
-                addDebug('로딩 완료!');
-                setIsLoading(false);
-              }
-            } else {
-              addDebug('INITIAL_SESSION - 세션 없음, 로그인 페이지로');
-              if (isMounted) {
-                router.replace('/login');
-              }
-            }
-          } else if (event === 'SIGNED_IN' && session?.user) {
-            addDebug(`SIGNED_IN - 유저: ${session.user.email}`);
-            if (isLoading) {
-              setUser({
-                id: session.user.id,
-                email: session.user.email || '',
-                name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
-              });
-              await loadData(session.user.id);
-              if (isMounted) setIsLoading(false);
-            }
-          } else if (event === 'SIGNED_OUT') {
-            addDebug('SIGNED_OUT - 로그아웃됨');
-            if (isMounted) router.replace('/login');
-          } else if (event === 'TOKEN_REFRESHED') {
-            addDebug('TOKEN_REFRESHED - 토큰 갱신됨');
-          }
+    const checkSessionAndLoad = async () => {
+      try {
+        // getSession으로 직접 세션 확인 (가장 확실한 방법)
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('Session error:', error);
+          router.replace('/login');
+          return;
         }
-      );
-      
-      // 3. 5초 타임아웃 - INITIAL_SESSION이 안 오면 수동 체크
-      const timeoutId = setTimeout(async () => {
-        if (!isMounted || !isLoading) return;
-        
-        addDebug('5초 타임아웃 - 수동 세션 체크');
-        
-        const { data: { session } } = await supabase.auth.getSession();
-        addDebug(`수동 체크 결과: ${session ? '세션 있음' : '세션 없음'}`);
-        
-        if (session?.user && isMounted) {
+
+        if (session?.user) {
+          // 세션 있음 - 유저 설정 및 데이터 로드
           setUser({
             id: session.user.id,
             email: session.user.email || '',
             name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
           });
+          
           await loadData(session.user.id);
-          if (isMounted) setIsLoading(false);
-        } else if (isMounted) {
-          addDebug('세션 없음 - 로그인 페이지로 이동');
+          setDataLoaded(true);
+          setIsLoading(false);
+        } else {
+          // 세션 없음 - 로그인 페이지로
           router.replace('/login');
         }
-      }, 5000);
-
-      return () => {
-        clearTimeout(timeoutId);
-        subscription.unsubscribe();
-      };
+      } catch (err) {
+        console.error('Auth check error:', err);
+        router.replace('/login');
+      }
     };
 
-    const cleanup = init();
+    checkSessionAndLoad();
+  }, [dataLoaded, router, setUser, loadData]);
+
+  // 로그아웃 감지용 리스너 (별도)
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        router.replace('/login');
+      }
+    });
 
     return () => {
-      isMounted = false;
-      cleanup.then(fn => fn?.());
+      subscription.unsubscribe();
     };
-  }, [router, setUser, loadData, isLoading]);
+  }, [router]);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -240,25 +191,12 @@ export default function MyPage() {
     return modes[mode] || mode;
   };
 
-  // 로딩 중 - 디버그 정보 표시
   if (isLoading) {
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-[#87D039] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-zinc-500 text-sm mb-4">로딩 중...</p>
-          
-          {/* 디버그 로그 표시 */}
-          <div className="mt-8 p-4 bg-black text-green-400 rounded-lg text-left text-xs font-mono max-w-md mx-auto max-h-60 overflow-y-auto">
-            <p className="text-yellow-400 mb-2">🔍 디버그 로그:</p>
-            {debugLog.length === 0 ? (
-              <p className="text-gray-500">로그 없음...</p>
-            ) : (
-              debugLog.map((log, i) => (
-                <p key={i} className="mb-1">{log}</p>
-              ))
-            )}
-          </div>
+          <p className="text-zinc-500 text-sm">로딩 중...</p>
         </div>
       </div>
     );
