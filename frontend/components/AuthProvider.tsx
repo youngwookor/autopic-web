@@ -99,12 +99,13 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
             });
             setBalance(profile.credits || 0);
             
-            // 환영 메시지 (중복 방지: 세션당 한 번만)
+            // 환영 메시지 (toast ID로 중복 방지 + 세션당 1회)
             const welcomeKey = `welcomed_${session.user.id}`;
             if (!sessionStorage.getItem(welcomeKey)) {
               sessionStorage.setItem(welcomeKey, 'true');
               const { toast } = await import('react-hot-toast');
-              toast.success(`${profile.name || '회원'}님 환영합니다!`);
+              // 동일 ID로 호출하면 중복 표시 방지
+              toast.success(`${profile.name || '회원'}님 환영합니다!`, { id: 'welcome-toast' });
             }
           }
         } catch (error) {
