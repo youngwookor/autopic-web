@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import ToastProvider from "@/components/ToastProvider";
 import AuthProvider from "@/components/AuthProvider";
+import InAppBrowserDetector from "@/components/InAppBrowserDetector";
 
 export const metadata: Metadata = {
   title: "AUTOPIC - AI 상품 이미지 생성",
@@ -25,6 +26,7 @@ export default function RootLayout({
         <ToastProvider />
         <AuthProvider>
           {children}
+          <InAppBrowserDetector />
         </AuthProvider>
       </body>
     </html>

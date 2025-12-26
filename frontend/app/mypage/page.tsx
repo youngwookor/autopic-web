@@ -57,9 +57,19 @@ export default function MyPage() {
   // 세션 체크 및 데이터 로드 - 단순화
   useEffect(() => {
     let isMounted = true;
+    let timeoutId: NodeJS.Timeout;
 
     const checkAuth = async () => {
       try {
+        // 10초 타임아웃 설정
+        timeoutId = setTimeout(() => {
+          if (isMounted && loading) {
+            console.log('Auth check timeout, forcing load complete');
+            setLoading(false);
+            setAuthChecked(true);
+          }
+        }, 10000);
+
         // Supabase에서 직접 세션 확인
         const { data: { session }, error } = await supabase.auth.getSession();
         
@@ -69,6 +79,7 @@ export default function MyPage() {
 
         if (error || !session) {
           console.log('No session, redirecting...');
+          clearTimeout(timeoutId);
           router.replace('/login');
           return;
         }
@@ -99,10 +110,18 @@ export default function MyPage() {
         if (session.user && isMounted) {
           await loadData(session.user.id);
         }
+        
+        clearTimeout(timeoutId);
       } catch (error) {
         console.error('Auth check error:', error);
+        clearTimeout(timeoutId);
         if (isMounted) {
-          router.replace('/login');
+          setLoading(false);
+          setAuthChecked(true);
+          // 에러 시에도 Store에 유저 정보가 있으면 페이지 표시
+          if (!isAuthenticated) {
+            router.replace('/login');
+          }
         }
       }
     };
@@ -111,6 +130,7 @@ export default function MyPage() {
 
     return () => {
       isMounted = false;
+      clearTimeout(timeoutId);
     };
   }, [router, setUser, setBalance]);
 
