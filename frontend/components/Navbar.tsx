@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore, useCreditsStore } from '@/lib/store';
@@ -32,6 +32,12 @@ export default function Navbar({ isScrolled: propIsScrolled }: NavbarProps) {
   const { balance, setBalance } = useCreditsStore();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  
+  // 스와이프 다운 관련 상태
+  const [dragY, setDragY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const touchStartY = useRef(0);
+  const sheetRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 50);
@@ -50,6 +56,43 @@ export default function Navbar({ isScrolled: propIsScrolled }: NavbarProps) {
       document.body.style.overflow = 'unset';
     };
   }, [isMenuOpen]);
+
+  // 메뉴 닫힐 때 dragY 리셋
+  useEffect(() => {
+    if (!isMenuOpen) {
+      setDragY(0);
+      setIsDragging(false);
+    }
+  }, [isMenuOpen]);
+
+  // 스와이프 다운 핸들러
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY;
+    setIsDragging(true);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging) return;
+    
+    const currentY = e.touches[0].clientY;
+    const diff = currentY - touchStartY.current;
+    
+    // 아래로 드래그할 때만 반응 (양수 값)
+    if (diff > 0) {
+      setDragY(diff);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+    
+    // 100px 이상 내리면 메뉴 닫기
+    if (dragY > 100) {
+      setIsMenuOpen(false);
+    }
+    
+    setDragY(0);
+  };
 
   const scrollToSection = (id: string) => {
     setIsMenuOpen(false);
@@ -222,14 +265,24 @@ export default function Navbar({ isScrolled: propIsScrolled }: NavbarProps) {
       
       {/* Bottom Sheet */}
       <div 
-        className={`fixed bottom-0 left-0 right-0 z-[201] bg-white rounded-t-3xl transition-transform duration-300 ease-out md:hidden ${
+        ref={sheetRef}
+        className={`fixed bottom-0 left-0 right-0 z-[201] bg-white rounded-t-3xl md:hidden ${
+          isDragging ? '' : 'transition-transform duration-300 ease-out'
+        } ${
           isMenuOpen ? 'translate-y-0' : 'translate-y-full'
         }`}
-        style={{ maxHeight: '85vh' }}
+        style={{ 
+          maxHeight: '85vh',
+          transform: isMenuOpen ? `translateY(${dragY}px)` : 'translateY(100%)',
+          opacity: isMenuOpen ? Math.max(0, 1 - dragY / 300) : 1
+        }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
-        {/* Handle Bar */}
-        <div className="flex justify-center pt-3 pb-2">
-          <div className="w-10 h-1 bg-zinc-300 rounded-full" />
+        {/* Handle Bar - 드래그 힌트 */}
+        <div className="flex justify-center pt-3 pb-2 cursor-grab active:cursor-grabbing">
+          <div className={`w-10 h-1 rounded-full transition-colors ${isDragging ? 'bg-zinc-400' : 'bg-zinc-300'}`} />
         </div>
 
         {/* Menu Content */}
