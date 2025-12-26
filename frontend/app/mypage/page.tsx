@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { supabase, signOut } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { useAuthStore, useCreditsStore } from '@/lib/store';
 import { 
   User, CreditCard, Image, Settings, LogOut, 
@@ -42,7 +42,7 @@ interface ApiKey {
 
 export default function MyPage() {
   const router = useRouter();
-  const { user, isAuthenticated, setUser, logout: storeLogout } = useAuthStore();
+  const { user, setUser, logout: storeLogout } = useAuthStore();
   const { balance, setBalance } = useCreditsStore();
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [generations, setGenerations] = useState<Generation[]>([]);
@@ -51,11 +51,14 @@ export default function MyPage() {
   const [profile, setProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
   // 데이터 로드 함수
-  const loadData = async (userId: string) => {
+  const loadData = useCallback(async (userId: string) => {
+    console.log('Loading data for user:', userId);
+    
     try {
       // 프로필 로드
       const { data: profileData, error: profileError } = await supabase
@@ -64,29 +67,40 @@ export default function MyPage() {
         .eq('id', userId)
         .single();
       
-      if (profileError) throw profileError;
+      if (profileError) {
+        console.error('Profile load error:', profileError);
+      }
       
       if (profileData) {
+        console.log('Profile loaded:', profileData);
         setProfile(profileData);
         setBalance(profileData.credits || 0);
       }
 
       // 생성 내역 로드
-      const { data: generationsData } = await supabase
+      const { data: generationsData, error: genError } = await supabase
         .from('generations')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(100);
+      
+      if (genError) {
+        console.error('Generations load error:', genError);
+      }
       setGenerations(generationsData || []);
 
       // 사용 내역 로드
-      const { data: usagesData } = await supabase
+      const { data: usagesData, error: usageError } = await supabase
         .from('usages')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(50);
+      
+      if (usageError) {
+        console.error('Usages load error:', usageError);
+      }
       setUsages(usagesData || []);
 
       // API 키 로드 (에러 무시)
@@ -99,55 +113,87 @@ export default function MyPage() {
       } catch (e) {
         console.log('API keys load skipped');
       }
+
+      return true;
     } catch (error) {
       console.error('Data load error:', error);
+      return false;
     }
-  };
+  }, [API_URL, setBalance]);
 
   useEffect(() => {
     let isMounted = true;
+    let authSubscription: any = null;
 
-    const init = async () => {
-      try {
-        // Supabase 세션 직접 확인
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error || !session?.user) {
-          if (isMounted) {
-            router.replace('/login');
-          }
-          return;
-        }
-
+    const initAuth = async () => {
+      console.log('MyPage: Initializing auth...');
+      
+      // 1. 먼저 현재 세션 확인
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      console.log('MyPage: Session check result:', { session: !!session, error });
+      
+      if (session?.user && isMounted) {
         const userId = session.user.id;
-
+        setCurrentUserId(userId);
+        
         // Store 업데이트
-        if (isMounted) {
-          setUser({
-            id: userId,
-            email: session.user.email || '',
-            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
-          });
-        }
-
+        setUser({
+          id: userId,
+          email: session.user.email || '',
+          name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
+        });
+        
         // 데이터 로드
         await loadData(userId);
-
-      } catch (error) {
-        console.error('Init error:', error);
-      } finally {
+        
         if (isMounted) {
           setIsLoading(false);
         }
+      } else if (isMounted) {
+        // 세션이 없으면 로그인 페이지로
+        console.log('MyPage: No session, redirecting to login');
+        router.replace('/login');
       }
+      
+      // 2. Auth 상태 변경 리스너 등록
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        async (event, session) => {
+          console.log('MyPage: Auth state changed:', event);
+          
+          if (event === 'SIGNED_OUT' && isMounted) {
+            router.replace('/login');
+          } else if (event === 'SIGNED_IN' && session?.user && isMounted) {
+            const userId = session.user.id;
+            if (userId !== currentUserId) {
+              setCurrentUserId(userId);
+              setUser({
+                id: userId,
+                email: session.user.email || '',
+                name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
+              });
+              await loadData(userId);
+              setIsLoading(false);
+            }
+          } else if (event === 'TOKEN_REFRESHED' && session?.user && isMounted) {
+            // 토큰 갱신 시에도 데이터 유지
+            console.log('MyPage: Token refreshed');
+          }
+        }
+      );
+      
+      authSubscription = subscription;
     };
 
-    init();
+    initAuth();
 
     return () => {
       isMounted = false;
+      if (authSubscription) {
+        authSubscription.unsubscribe();
+      }
     };
-  }, []);
+  }, [router, setUser, loadData]);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -156,7 +202,11 @@ export default function MyPage() {
     
     try {
       // Supabase 로그아웃
-      await supabase.auth.signOut();
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        console.error('Supabase signOut error:', error);
+      }
       
       // Store 초기화
       storeLogout();
@@ -167,12 +217,18 @@ export default function MyPage() {
         localStorage.removeItem('autopic-auth');
         localStorage.removeItem('auth-storage');
         localStorage.removeItem('credits-storage');
+        // Supabase 관련 스토리지도 클리어
+        Object.keys(localStorage).forEach(key => {
+          if (key.startsWith('sb-')) {
+            localStorage.removeItem(key);
+          }
+        });
         sessionStorage.clear();
       }
       
       toast.success('로그아웃 되었습니다');
       
-      // 홈으로 이동
+      // 홈으로 이동 (완전 새로고침)
       window.location.href = '/';
     } catch (error) {
       console.error('Logout error:', error);
@@ -224,8 +280,10 @@ export default function MyPage() {
     { id: 'settings', label: '설정', icon: Settings },
   ];
 
-  // 크레딧 값
-  const currentCredits = balance?.credits ?? profile?.credits ?? 0;
+  // 크레딧 값 - 여러 소스에서 가져오기
+  const currentCredits = typeof balance === 'number' 
+    ? balance 
+    : (balance?.credits ?? profile?.credits ?? 0);
 
   // 이번 달 사용량
   const thisMonth = new Date();
@@ -293,7 +351,7 @@ export default function MyPage() {
                   {(profile?.name || user?.email || 'U')[0]?.toUpperCase()}
                 </div>
                 <div>
-                  <h2 className="text-xl md:text-2xl font-bold">{profile?.name || '사용자'}</h2>
+                  <h2 className="text-xl md:text-2xl font-bold">{profile?.name || user?.name || '사용자'}</h2>
                   <p className="text-zinc-500 text-sm md:text-base">{user?.email || profile?.email || ''}</p>
                 </div>
               </div>
