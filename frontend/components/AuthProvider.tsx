@@ -14,48 +14,50 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     if (isInitialized.current) return;
     isInitialized.current = true;
 
+    // 프로필 로드 함수 (별도 비동기)
+    const loadProfile = async (userId: string, email: string) => {
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('name, credits')
+          .eq('id', userId)
+          .single();
+
+        if (profile) {
+          setUser({
+            id: userId,
+            email: email,
+            name: profile.name || email.split('@')[0] || '',
+          });
+          setBalance(profile.credits || 0);
+          console.log('Profile loaded:', profile.name);
+        }
+      } catch (e) {
+        console.error('Profile error:', e);
+      }
+    };
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
         console.log('Auth event:', event, 'Has session:', !!session);
 
-        try {
-          if (session?.user) {
-            // 세션 있음 - 유저 기본 정보 먼저 설정
-            setUser({
-              id: session.user.id,
-              email: session.user.email || '',
-              name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
-            });
+        if (session?.user) {
+          // 1. 기본 유저 정보 즉시 설정
+          setUser({
+            id: session.user.id,
+            email: session.user.email || '',
+            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
+          });
 
-            // 프로필 로드
-            try {
-              const { data: profile } = await supabase
-                .from('profiles')
-                .select('name, credits')
-                .eq('id', session.user.id)
-                .single();
+          // 2. 프로필은 백그라운드에서 로드 (await 없이!)
+          loadProfile(session.user.id, session.user.email || '');
 
-              if (profile) {
-                setUser({
-                  id: session.user.id,
-                  email: session.user.email || '',
-                  name: profile.name || session.user.email?.split('@')[0] || '',
-                });
-                setBalance(profile.credits || 0);
-              }
-            } catch (profileError) {
-              console.error('Profile load error:', profileError);
-            }
-
-          } else {
-            logout();
-            setBalance(0);
-          }
-        } catch (error) {
-          console.error('Auth error:', error);
+        } else {
+          logout();
+          setBalance(0);
         }
 
-        // 무조건 Auth 준비 완료
+        // 3. 즉시 Auth 준비 완료! (프로필 로드 안 기다림)
         console.log('Auth ready!');
         setIsAuthReady(true);
       }
