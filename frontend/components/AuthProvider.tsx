@@ -5,27 +5,47 @@ import { supabase } from '@/lib/supabase';
 import { useAuthStore, useCreditsStore } from '@/lib/store';
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { setUser, logout } = useAuthStore();
+  const { setUser, logout, isAuthenticated, user } = useAuthStore();
   const { setBalance } = useCreditsStore();
   const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
     let mounted = true;
 
-    // 초기 세션 체크
-    const initializeAuth = async () => {
+    // 1단계: localStorage에서 빠르게 복원 (즉시)
+    const quickRestore = () => {
+      try {
+        const stored = localStorage.getItem('auth-storage');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed?.state?.user && parsed?.state?.isAuthenticated) {
+            console.log('Quick restore from localStorage');
+            // 이미 Store에 있으면 스킵
+            return true;
+          }
+        }
+      } catch (e) {
+        console.error('Quick restore error:', e);
+      }
+      return false;
+    };
+
+    // 2단계: Supabase에서 세션 확인 (느림)
+    const verifySession = async () => {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
           console.error('Session error:', error);
+          // 에러 시에도 기존 세션 유지
           return;
         }
 
         if (session?.user && mounted) {
+          // 프로필 정보 갱신
           const { data: profile } = await supabase
             .from('profiles')
-            .select('*')
+            .select('id, name, email, credits')
             .eq('id', session.user.id)
             .single();
 
@@ -37,9 +57,15 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
             });
             setBalance(profile.credits || 0);
           }
+        } else if (!session && mounted) {
+          // 세션 없으면 로그아웃
+          console.log('No session found, clearing state');
+          logout();
+          setBalance(0);
         }
       } catch (error) {
-        console.error('Auth initialization error:', error);
+        console.error('Session verify error:', error);
+        // 에러 시 기존 상태 유지
       } finally {
         if (mounted) {
           setIsInitialized(true);
@@ -47,7 +73,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       }
     };
 
-    initializeAuth();
+    // 실행
+    quickRestore();
+    verifySession();
 
     // Auth 상태 변화 리스너
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -59,7 +87,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         try {
           const { data: profile } = await supabase
             .from('profiles')
-            .select('*')
+            .select('id, name, email, credits')
             .eq('id', session.user.id)
             .single();
 
@@ -80,7 +108,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           setBalance(0);
         }
       } else if (event === 'TOKEN_REFRESHED') {
-        // 토큰 갱신 시 세션 유지
         console.log('Token refreshed successfully');
       }
     });
@@ -90,11 +117,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       subscription.unsubscribe();
     };
   }, [setUser, setBalance, logout]);
-
-  // 초기화 중일 때 로딩 표시 (선택적)
-  // if (!isInitialized) {
-  //   return <div>Loading...</div>;
-  // }
 
   return <>{children}</>;
 }

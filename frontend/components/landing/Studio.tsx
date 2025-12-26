@@ -55,20 +55,33 @@ export default function Studio() {
   const [isDraggingMain, setIsDraggingMain] = useState(false);
   const [isDraggingSub, setIsDraggingSub] = useState(false);
 
-  // 호버 상태
+  // 호버 상태 (PC 전용)
   const [isHovered, setIsHovered] = useState(false);
   
-  // 모달 상태 (클릭 시 전체화면)
+  // 모달 상태 (PC 전용)
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // 다운로드 상태
   const [isDownloading, setIsDownloading] = useState(false);
+
+  // 모바일 감지
+  const [isMobile, setIsMobile] = useState(false);
 
   const mainInputRef = useRef<HTMLInputElement>(null);
   const subInputRef = useRef<HTMLInputElement>(null);
 
   const requiredCredits = MODEL_CONFIG[modelType].credits;
   const credits = balance?.credits || 0;
+
+  // 모바일 감지
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // mode 값 계산 (백엔드 전송용)
   const getMode = () => {
@@ -197,7 +210,7 @@ export default function Studio() {
     toast.success('다운로드 완료!');
   };
 
-  // ZIP 압축 다운로드
+  // ZIP 압축 다운로드 (PC 전용)
   const handleDownloadAll = async () => {
     if (generatedImages.length === 0) return;
     
@@ -241,7 +254,7 @@ export default function Studio() {
     setSelectedImageIndex((prev) => (prev === generatedImages.length - 1 ? 0 : prev + 1));
   };
 
-  // 키보드 이벤트
+  // 키보드 이벤트 (PC 전용)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (generatedImages.length === 0) return;
@@ -253,6 +266,13 @@ export default function Studio() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [generatedImages.length]);
+
+  // 이미지 클릭 핸들러 (PC만 모달 열기)
+  const handleImageClick = () => {
+    if (!isMobile) {
+      setIsModalOpen(true);
+    }
+  };
 
   return (
     <>
@@ -524,18 +544,29 @@ export default function Studio() {
                 <div className="flex items-center justify-between mb-3 md:mb-4">
                   <h3 className="text-sm md:text-base font-bold text-zinc-900">생성 결과</h3>
                   {generatedImages.length > 0 && (
-                    <button 
-                      onClick={handleDownloadAll}
-                      disabled={isDownloading}
-                      className="flex items-center gap-1.5 md:gap-2 text-xs md:text-sm font-medium text-black bg-[#87D039] px-3 md:px-4 py-1.5 md:py-2 rounded-full hover:bg-[#9AE045] transition-colors disabled:opacity-50"
-                    >
-                      {isDownloading ? (
-                        <Loader2 size={12} className="animate-spin md:w-3.5 md:h-3.5" />
-                      ) : (
-                        <Package size={12} className="md:w-3.5 md:h-3.5" />
-                      )}
-                      {isDownloading ? '압축 중...' : '전체 다운로드'}
-                    </button>
+                    <>
+                      {/* 모바일: 선택된 이미지 다운로드 */}
+                      <button 
+                        onClick={() => handleDownload()}
+                        className="flex md:hidden items-center gap-1.5 text-xs font-medium text-black bg-[#87D039] px-3 py-1.5 rounded-full hover:bg-[#9AE045] transition-colors"
+                      >
+                        <Download size={12} />
+                        다운로드
+                      </button>
+                      {/* PC: 전체 다운로드 */}
+                      <button 
+                        onClick={handleDownloadAll}
+                        disabled={isDownloading}
+                        className="hidden md:flex items-center gap-2 text-sm font-medium text-black bg-[#87D039] px-4 py-2 rounded-full hover:bg-[#9AE045] transition-colors disabled:opacity-50"
+                      >
+                        {isDownloading ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Package size={14} />
+                        )}
+                        {isDownloading ? '압축 중...' : '전체 다운로드'}
+                      </button>
+                    </>
                   )}
                 </div>
 
@@ -551,12 +582,30 @@ export default function Studio() {
                     </div>
                   ) : generatedImages.length > 0 ? (
                     <>
-                      {/* Main Preview - 호버 시 살짝 확대 + 슬라이드 */}
+                      {/* Main Preview */}
                       <div 
-                        className="relative flex-1 flex items-center justify-center mb-3 md:mb-4 bg-zinc-50 rounded-xl md:rounded-2xl p-3 md:p-4 min-h-[200px] md:min-h-[280px] overflow-hidden cursor-pointer"
-                        onMouseEnter={() => setIsHovered(true)}
-                        onMouseLeave={() => setIsHovered(false)}
-                        onClick={() => setIsModalOpen(true)}
+                        className={`relative flex-1 flex items-center justify-center mb-3 md:mb-4 bg-zinc-50 rounded-xl md:rounded-2xl p-3 md:p-4 min-h-[200px] md:min-h-[280px] overflow-hidden ${!isMobile ? 'cursor-pointer' : ''}`}
+                        onMouseEnter={() => !isMobile && setIsHovered(true)}
+                        onMouseLeave={() => !isMobile && setIsHovered(false)}
+                        onClick={handleImageClick}
+                        onTouchStart={(e) => {
+                          if (isMobile) {
+                            const touch = e.touches[0];
+                            (e.currentTarget as any).touchStartX = touch.clientX;
+                          }
+                        }}
+                        onTouchEnd={(e) => {
+                          if (isMobile) {
+                            const touchStartX = (e.currentTarget as any).touchStartX;
+                            const touchEndX = e.changedTouches[0].clientX;
+                            const diff = touchStartX - touchEndX;
+                            
+                            if (Math.abs(diff) > 50) {
+                              if (diff > 0) goToNextImage();
+                              else goToPrevImage();
+                            }
+                          }
+                        }}
                       >
                         {/* 슬라이드 네비게이션 - 모바일에선 항상 표시, PC에선 호버 시 */}
                         {generatedImages.length > 1 && (
@@ -597,19 +646,19 @@ export default function Studio() {
                           src={generatedImages[selectedImageIndex]} 
                           alt={`Generated ${selectedImageIndex + 1}`} 
                           className={`max-w-full max-h-[250px] md:max-h-[320px] rounded-lg md:rounded-xl shadow-lg object-contain transition-transform duration-300 ${
-                            isHovered ? 'scale-105' : 'scale-100'
+                            isHovered && !isMobile ? 'scale-105' : 'scale-100'
                           }`}
                         />
 
                         {/* 클릭하면 확대 힌트 - PC만 */}
-                        {isHovered && (
-                          <div className="absolute top-3 right-3 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full hidden md:block">
+                        {isHovered && !isMobile && (
+                          <div className="absolute top-3 right-3 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full">
                             클릭하여 전체화면
                           </div>
                         )}
                       </div>
                       
-                      {/* Thumbnails */}
+                      {/* Thumbnails - 모바일에서 다운로드 아이콘 숨김 */}
                       <div className="grid grid-cols-4 gap-2 md:gap-3">
                         {generatedImages.map((img, index) => (
                           <div 
@@ -618,11 +667,12 @@ export default function Studio() {
                             className={`relative aspect-square rounded-lg md:rounded-xl overflow-hidden cursor-pointer transition-all ${selectedImageIndex === index ? 'ring-2 md:ring-3 ring-[#87D039] shadow-lg' : 'ring-1 ring-zinc-200 hover:ring-zinc-400'}`}
                           >
                             <img src={img} alt={`Thumbnail ${index + 1}`} className="w-full h-full object-cover" />
+                            {/* PC에서만 개별 다운로드 버튼 표시 */}
                             <button 
                               onClick={(e) => { e.stopPropagation(); handleDownload(index); }}
-                              className="absolute bottom-1 right-1 bg-black/70 text-white p-1 md:p-1.5 rounded-md md:rounded-lg hover:bg-black transition-colors"
+                              className="absolute bottom-1 right-1 bg-black/70 text-white p-1.5 rounded-lg hover:bg-black transition-colors hidden md:block"
                             >
-                              <Download size={10} className="md:w-3 md:h-3" />
+                              <Download size={12} />
                             </button>
                             <span className="absolute top-1 left-1 bg-black/70 text-white text-[8px] md:text-[10px] font-bold px-1.5 md:px-2 py-0.5 rounded">
                               {index + 1}
@@ -648,74 +698,42 @@ export default function Studio() {
         </div>
       </section>
 
-      {/* 전체화면 모달 - 모바일 최적화 */}
-      {isModalOpen && generatedImages.length > 0 && (
+      {/* 전체화면 모달 - PC 전용 */}
+      {isModalOpen && !isMobile && generatedImages.length > 0 && (
         <div 
-          className="fixed inset-0 bg-black z-50 flex flex-col"
+          className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center"
           onClick={() => setIsModalOpen(false)}
         >
-          {/* 상단 바 */}
-          <div className="flex items-center justify-between p-4 text-white">
-            <span className="text-sm font-medium">{selectedImageIndex + 1} / {generatedImages.length}</span>
-            <button 
-              className="p-2 hover:bg-white/10 rounded-full transition"
-              onClick={() => setIsModalOpen(false)}
-            >
-              <X size={24} />
-            </button>
-          </div>
-
-          {/* 이미지 영역 - 터치 스와이프 지원 */}
-          <div 
-            className="flex-1 flex items-center justify-center relative overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-            onTouchStart={(e) => {
-              const touch = e.touches[0];
-              (e.currentTarget as any).touchStartX = touch.clientX;
-            }}
-            onTouchEnd={(e) => {
-              const touchStartX = (e.currentTarget as any).touchStartX;
-              const touchEndX = e.changedTouches[0].clientX;
-              const diff = touchStartX - touchEndX;
-              
-              if (Math.abs(diff) > 50) {
-                if (diff > 0) goToNextImage();
-                else goToPrevImage();
-              }
-            }}
+          {/* 닫기 버튼 */}
+          <button 
+            className="absolute top-4 right-4 text-white/70 hover:text-white p-2 hover:bg-white/10 rounded-full transition z-20"
+            onClick={() => setIsModalOpen(false)}
           >
-            {/* PC 전용 이전 버튼 */}
-            <button 
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-3 hover:bg-white/10 rounded-full transition z-20 hidden md:flex"
-              onClick={(e) => { e.stopPropagation(); goToPrevImage(); }}
-            >
-              <ChevronLeft size={32} />
-            </button>
+            <X size={28} />
+          </button>
 
+          {/* 이전 버튼 */}
+          <button 
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-3 hover:bg-white/10 rounded-full transition z-20"
+            onClick={(e) => { e.stopPropagation(); goToPrevImage(); }}
+          >
+            <ChevronLeft size={32} />
+          </button>
+
+          {/* 이미지 */}
+          <div className="flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
             <img 
               src={generatedImages[selectedImageIndex]} 
               alt={`Image ${selectedImageIndex + 1}`}
-              className="max-w-full max-h-full object-contain px-4"
-              style={{ maxHeight: 'calc(100vh - 200px)' }}
+              className="max-w-[90vw] max-h-[80vh] object-contain rounded-lg"
             />
-
-            {/* PC 전용 다음 버튼 */}
-            <button 
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-3 hover:bg-white/10 rounded-full transition z-20 hidden md:flex"
-              onClick={(e) => { e.stopPropagation(); goToNextImage(); }}
-            >
-              <ChevronRight size={32} />
-            </button>
-          </div>
-
-          {/* 하단 컨트롤 */}
-          <div className="p-4 pb-8">
+            
             {/* 인디케이터 */}
-            <div className="flex justify-center gap-2 mb-4">
+            <div className="flex gap-2 mt-4">
               {generatedImages.map((_, idx) => (
                 <button
                   key={idx}
-                  onClick={(e) => { e.stopPropagation(); setSelectedImageIndex(idx); }}
+                  onClick={() => setSelectedImageIndex(idx)}
                   className={`w-2.5 h-2.5 rounded-full transition ${idx === selectedImageIndex ? 'bg-[#87D039]' : 'bg-white/40'}`}
                 />
               ))}
@@ -723,21 +741,21 @@ export default function Studio() {
             
             {/* 다운로드 버튼 */}
             <button
-              onClick={(e) => { e.stopPropagation(); handleDownload(selectedImageIndex); }}
-              className="w-full max-w-xs mx-auto flex items-center justify-center gap-2 bg-[#87D039] text-black px-6 py-3 rounded-full font-bold text-sm hover:bg-[#9AE045] transition"
+              onClick={() => handleDownload(selectedImageIndex)}
+              className="mt-4 flex items-center gap-2 bg-[#87D039] text-black px-6 py-2.5 rounded-full font-bold text-sm hover:bg-[#9AE045] transition"
             >
-              <Download size={18} />
+              <Download size={16} />
               다운로드
             </button>
-            
-            {/* 모바일 스와이프 힌트 */}
-            <p className="text-center text-white/50 text-xs mt-3 md:hidden">
-              ← 좌우로 스와이프하여 이동 →
-            </p>
           </div>
 
-          {/* iOS Safe Area */}
-          <div className="h-[env(safe-area-inset-bottom)]" />
+          {/* 다음 버튼 */}
+          <button 
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-3 hover:bg-white/10 rounded-full transition z-20"
+            onClick={(e) => { e.stopPropagation(); goToNextImage(); }}
+          >
+            <ChevronRight size={32} />
+          </button>
         </div>
       )}
     </>

@@ -54,37 +54,44 @@ export default function MyPage() {
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-  // 세션 체크 및 데이터 로드 - 단순화
+  // Store에 이미 유저 정보가 있으면 바로 표시
   useEffect(() => {
+    if (isAuthenticated && user?.id) {
+      setAuthChecked(true);
+      loadData(user.id);
+    }
+  }, [isAuthenticated, user?.id]);
+
+  // 세션 체크 및 데이터 로드
+  useEffect(() => {
+    if (isAuthenticated && user?.id) return;
+
     let isMounted = true;
     let timeoutId: NodeJS.Timeout;
 
     const checkAuth = async () => {
       try {
-        // 10초 타임아웃 설정
         timeoutId = setTimeout(() => {
-          if (isMounted && loading) {
-            console.log('Auth check timeout, forcing load complete');
-            setLoading(false);
-            setAuthChecked(true);
+          if (isMounted && !authChecked) {
+            if (!isAuthenticated) {
+              router.replace('/login');
+            } else {
+              setLoading(false);
+              setAuthChecked(true);
+            }
           }
-        }, 10000);
+        }, 5000);
 
-        // Supabase에서 직접 세션 확인
         const { data: { session }, error } = await supabase.auth.getSession();
         
-        console.log('MyPage session check:', { session: !!session, error });
-        
         if (!isMounted) return;
+        clearTimeout(timeoutId);
 
         if (error || !session) {
-          console.log('No session, redirecting...');
-          clearTimeout(timeoutId);
           router.replace('/login');
           return;
         }
 
-        // 세션이 있으면 Store도 업데이트
         if (session.user) {
           const { data: profileData } = await supabase
             .from('profiles')
@@ -93,7 +100,6 @@ export default function MyPage() {
             .single();
 
           if (profileData && isMounted) {
-            // Store 동기화
             setUser({
               id: session.user.id,
               email: session.user.email || '',
@@ -102,24 +108,18 @@ export default function MyPage() {
             setBalance(profileData.credits || 0);
             setProfile(profileData);
           }
-        }
 
-        setAuthChecked(true);
-        
-        // 나머지 데이터 로드
-        if (session.user && isMounted) {
-          await loadData(session.user.id);
+          setAuthChecked(true);
+          if (isMounted) await loadData(session.user.id);
         }
-        
-        clearTimeout(timeoutId);
       } catch (error) {
         console.error('Auth check error:', error);
         clearTimeout(timeoutId);
         if (isMounted) {
-          setLoading(false);
-          setAuthChecked(true);
-          // 에러 시에도 Store에 유저 정보가 있으면 페이지 표시
-          if (!isAuthenticated) {
+          if (isAuthenticated) {
+            setLoading(false);
+            setAuthChecked(true);
+          } else {
             router.replace('/login');
           }
         }
@@ -132,7 +132,7 @@ export default function MyPage() {
       isMounted = false;
       clearTimeout(timeoutId);
     };
-  }, [router, setUser, setBalance]);
+  }, [router, setUser, setBalance, isAuthenticated, user?.id, authChecked]);
 
   const loadData = async (userId: string) => {
     try {
