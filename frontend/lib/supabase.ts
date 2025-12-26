@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-// Supabase 클라이언트 생성
+// 세션 지속성 및 자동 갱신 옵션 추가
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
@@ -45,7 +45,7 @@ export async function signInWithGoogle() {
       redirectTo: `${window.location.origin}/auth/callback`,
       queryParams: {
         access_type: 'offline',
-        prompt: 'select_account',
+        prompt: 'select_account',  // 'consent' → 'select_account'로 변경 (매번 동의 요청 X)
       },
     },
   });
@@ -66,8 +66,11 @@ export async function signInWithKakao() {
 }
 
 export async function signOut() {
+  // 로컬 스토리지 클리어
   if (typeof window !== 'undefined') {
     localStorage.removeItem('autopic-auth');
+    localStorage.removeItem('auth-storage');
+    localStorage.removeItem('credits-storage');
   }
   
   const { error } = await supabase.auth.signOut({ scope: 'global' });
@@ -109,17 +112,20 @@ export async function updateProfile(userId: string, updates: { name?: string; ph
 }
 
 export async function updateCredits(userId: string, creditsToDeduct: number) {
+  // 현재 크레딧 확인
   const profile = await getProfile(userId);
   if (profile.credits < creditsToDeduct) {
     throw new Error('크레딧이 부족합니다');
   }
   
+  // 크레딧 차감
   const { error } = await supabase
     .from('profiles')
     .update({ credits: profile.credits - creditsToDeduct })
     .eq('id', userId);
   if (error) throw error;
   
+  // 사용 내역 기록
   await supabase.from('usages').insert({
     user_id: userId,
     action: 'image_generation',
@@ -132,12 +138,14 @@ export async function updateCredits(userId: string, creditsToDeduct: number) {
 export async function addCredits(userId: string, credits: number, paymentKey?: string) {
   const profile = await getProfile(userId);
   
+  // 크레딧 추가
   const { error } = await supabase
     .from('profiles')
     .update({ credits: profile.credits + credits })
     .eq('id', userId);
   if (error) throw error;
   
+  // 결제 내역 기록
   if (paymentKey) {
     await supabase.from('payments').insert({
       user_id: userId,
