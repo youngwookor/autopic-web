@@ -513,8 +513,9 @@ export default function Studio() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [generatedImages.length]);
 
+  // PC에서는 클릭 확대 비활성화 (모바일은 핀치줌 사용)
   const handleImageClick = () => {
-    if (!isMobile) setIsModalOpen(true);
+    // 모바일은 핀치줌 사용, PC는 확대 없음
   };
 
   return (

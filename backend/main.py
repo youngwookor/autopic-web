@@ -289,17 +289,19 @@ def get_category_group(category1: str, category2: str = "", target: str = "사�
 
 
 def convert_gender_to_model(gender: str) -> str:
-    """성별을 모델 타입으로 변환 (기존 processor.py와 100% 동일)"""
-    gender_str = str(gender) if gender else ""
+    """성별을 모델 타입으로 변환 - auto/공용은 랜덤 선택"""
+    import random
+    gender_str = str(gender).lower().strip() if gender else ""
     
-    if gender_str == "검토필요":
+    # 명시적 남성
+    if gender_str in ["male", "남성", "검토필요"]:
         return "MALE"
-    elif gender_str == "male":
-        return "MALE"
-    elif "남성" in gender_str and "여성" not in gender_str:
-        return "MALE"
-    else:
+    # 명시적 여성
+    elif gender_str in ["female", "여성"]:
         return "FEMALE"
+    # auto, 공용, 빈값 등 → 랜덤 선택 (50:50)
+    else:
+        return random.choice(["MALE", "FEMALE"])
 
 
 # ============================================================================
