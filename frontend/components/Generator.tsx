@@ -192,8 +192,48 @@ export default function Generator() {
     }
   };
 
-  // 다운로드
-  const handleDownload = (url: string, label: string) => {
+  // 모바일 감지
+  const isMobile = () => {
+    if (typeof window === 'undefined') return false;
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
+           || window.innerWidth < 768;
+  };
+
+  // Base64 데이터를 Blob으로 변환
+  const base64ToBlob = async (base64: string): Promise<Blob> => {
+    const response = await fetch(base64);
+    return response.blob();
+  };
+
+  // 모바일 공유 (갤러리 저장 유도)
+  const handleMobileShare = async (url: string, label: string) => {
+    try {
+      const blob = await base64ToBlob(url);
+      const file = new File([blob], `autopic_${label}.jpg`, { type: 'image/jpeg' });
+      
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: `Autopic - ${label}`,
+        });
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.log('Share failed:', error);
+      return false;
+    }
+  };
+
+  // 다운로드 (모바일/PC 자동 분기)
+  const handleDownload = async (url: string, label: string) => {
+    // 모바일이면 Web Share API 시도
+    if (isMobile()) {
+      const shared = await handleMobileShare(url, label);
+      if (shared) return; // 공유 성공시 종료
+    }
+    
+    // PC 또는 공유 실패시 기존 다운로드
     const link = document.createElement('a');
     link.href = url;
     link.download = `autopic_${label}.jpg`;
@@ -202,11 +242,76 @@ export default function Generator() {
     document.body.removeChild(link);
   };
 
-  // 전체 다운로드
-  const handleDownloadAll = () => {
-    generatedImages.forEach((img, idx) => {
-      setTimeout(() => handleDownload(img.url, img.label), idx * 300);
-    });
+  // 전체 다운로드 (모바일/PC 분기)
+  const handleDownloadAll = async () => {
+    if (isMobile()) {
+      // 모바일: 각 이미지를 개별 공유 (대신 첫 이미지만)
+      // 또는 ZIP 없이 개별 다운로드
+      try {
+        // 모든 이미지를 File 배열로 변환
+        const files = await Promise.all(
+          generatedImages.map(async (img, idx) => {
+            const blob = await base64ToBlob(img.url);
+            return new File([blob], `autopic_${img.label}.jpg`, { type: 'image/jpeg' });
+          })
+        );
+        
+        // Web Share API로 복수 파일 공유 시도
+        if (navigator.share && navigator.canShare && navigator.canShare({ files })) {
+          await navigator.share({
+            files,
+            title: 'Autopic 생성 이미지',
+          });
+          return;
+        }
+      } catch (error) {
+        console.log('Multi-file share failed:', error);
+      }
+      
+      // 공유 실패시 개별 다운로드 (모바일 갤러리에 저장됨)
+      for (let i = 0; i < generatedImages.length; i++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const link = document.createElement('a');
+        link.href = generatedImages[i].url;
+        link.download = `autopic_${generatedImages[i].label}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    } else {
+      // PC: ZIP 다운로드
+      try {
+        const JSZip = (await import('jszip')).default;
+        const zip = new JSZip();
+        
+        for (const img of generatedImages) {
+          const blob = await base64ToBlob(img.url);
+          zip.file(`autopic_${img.label}.jpg`, blob);
+        }
+        
+        const content = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(content);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `autopic_images_${Date.now()}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        // JSZip 실패시 개별 다운로드
+        generatedImages.forEach((img, idx) => {
+          setTimeout(() => {
+            const link = document.createElement('a');
+            link.href = img.url;
+            link.download = `autopic_${img.label}.jpg`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }, idx * 300);
+        });
+      }
+    }
   };
 
   // 미리보기 네비게이션
@@ -466,7 +571,9 @@ export default function Generator() {
               onClick={handleDownloadAll}
               className="flex items-center gap-2 text-xs font-bold text-white bg-black px-4 py-2 rounded-full hover:bg-zinc-800 transition-colors"
             >
-              <Download size={14} /> 전체 다운로드
+              <Download size={14} /> 
+              <span className="hidden sm:inline">전체 다운로드 (ZIP)</span>
+              <span className="sm:hidden">저장하기</span>
             </button>
           )}
         </div>

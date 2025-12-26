@@ -1429,12 +1429,36 @@ async def desktop_get_credits(x_api_key: str = Header(None, alias="X-API-Key")):
             status_code=429, detail="요청 횟수 초과. 1분 후 다시 시도해주세요."
         )
 
-    user_id = await verify_api_key(x_api_key)
-    if not user_id:
+    # API 키 검증 및 이름 조회
+    try:
+        key_hash = hash_api_key(x_api_key)
+        result = (
+            supabase.table("api_keys")
+            .select("user_id, name")
+            .eq("key_hash", key_hash)
+            .eq("is_active", True)
+            .single()
+            .execute()
+        )
+
+        if not result.data:
+            raise HTTPException(status_code=401, detail="유효하지 않은 API 키입니다")
+        
+        user_id = result.data["user_id"]
+        key_name = result.data.get("name", "")
+        
+        # last_used_at 업데이트
+        supabase.table("api_keys").update(
+            {"last_used_at": datetime.now().isoformat()}
+        ).eq("key_hash", key_hash).execute()
+        
+    except HTTPException:
+        raise
+    except:
         raise HTTPException(status_code=401, detail="유효하지 않은 API 키입니다")
 
     credits = await check_credits(user_id, 0)
-    return {"credits": credits}
+    return {"credits": credits, "key_name": key_name}
 
 
 # ============================================================================
