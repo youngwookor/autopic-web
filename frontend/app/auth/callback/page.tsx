@@ -88,7 +88,7 @@ export default function AuthCallbackPage() {
           toast.error('프로필 생성 중 오류가 발생했습니다');
         } else {
           console.log('Callback - Profile created successfully');
-          toast.success('회원가입 완료! 5 크레딧이 지급되었습니다 🎉');
+          toast.success('회원가입 완료! 5 크레딧이 지급되었습니다 🎉', { id: 'welcome-toast' });
         }
 
         // Store 업데이트
@@ -108,7 +108,7 @@ export default function AuthCallbackPage() {
         });
         setBalance(profile.credits || 0);
 
-        toast.success('로그인 성공!');
+        // 환영 메시지는 AuthProvider에서 처리
       }
 
       router.push('/');
