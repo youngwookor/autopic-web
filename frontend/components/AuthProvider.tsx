@@ -11,67 +11,56 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const isInitialized = useRef(false);
 
   useEffect(() => {
-    // 이미 초기화됐으면 스킵
     if (isInitialized.current) return;
-
-    let mounted = true;
+    isInitialized.current = true;
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth event:', event, 'Has session:', !!session);
 
-        if (!mounted) return;
+        try {
+          if (session?.user) {
+            // 세션 있음 - 유저 기본 정보 먼저 설정
+            setUser({
+              id: session.user.id,
+              email: session.user.email || '',
+              name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
+            });
 
-        if (session?.user) {
-          try {
-            const { data: profile } = await supabase
+            // 프로필은 별도로 로드 (실패해도 진행)
+            supabase
               .from('profiles')
-              .select('id, name, email, credits')
+              .select('name, credits')
               .eq('id', session.user.id)
-              .single();
+              .single()
+              .then(({ data: profile }) => {
+                if (profile) {
+                  setUser({
+                    id: session.user.id,
+                    email: session.user.email || '',
+                    name: profile.name || session.user.email?.split('@')[0] || '',
+                  });
+                  setBalance(profile.credits || 0);
+                }
+              })
+              .catch(console.error);
 
-            if (profile && mounted) {
-              setUser({
-                id: session.user.id,
-                email: session.user.email || '',
-                name: profile.name || '',
-              });
-              setBalance(profile.credits || 0);
-              console.log('Profile loaded:', profile.name);
-            }
-          } catch (error) {
-            console.error('Profile fetch error:', error);
-          }
-
-          if (event === 'SIGNED_IN') {
-            const welcomeKey = `welcomed_${session.user.id}`;
-            if (!sessionStorage.getItem(welcomeKey)) {
-              sessionStorage.setItem(welcomeKey, 'true');
-              const { toast } = await import('react-hot-toast');
-              toast.success('환영합니다!', { id: 'welcome-toast' });
-            }
-          }
-        } else {
-          if (mounted) {
+          } else {
             logout();
             setBalance(0);
           }
+        } catch (error) {
+          console.error('Auth error:', error);
         }
 
-        // 첫 번째 이벤트 후 Auth 준비 완료 (한 번만 실행)
-        if (!isInitialized.current && mounted) {
-          console.log('Auth ready! Setting isAuthReady to true');
-          isInitialized.current = true;
-          setIsAuthReady(true);
-        }
+        // 무조건 Auth 준비 완료 (에러 나도 진행)
+        console.log('Auth ready!');
+        setIsAuthReady(true);
       }
     );
 
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, [setUser, setBalance, logout]); // isAuthReady 제거!
+    return () => subscription.unsubscribe();
+  }, [setUser, setBalance, logout]);
 
   if (!isAuthReady) {
     return (

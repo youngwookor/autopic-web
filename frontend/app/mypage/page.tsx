@@ -1,5 +1,8 @@
 'use client';
 
+// Vercel에서 정적 생성 방지 - 항상 동적 렌더링
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
