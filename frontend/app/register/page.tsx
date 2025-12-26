@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { signUp, signInWithGoogle, signInWithKakao } from '@/lib/supabase';
-import { Loader2, X, Check, ChevronRight } from 'lucide-react';
+import { Loader2, X, Check, ChevronRight, Phone, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 // Google 아이콘
 const GoogleIcon = () => (
@@ -61,12 +63,12 @@ const TERMS_OF_SERVICE = `
 const PRIVACY_POLICY = `
 1. 수집하는 개인정보
 회사는 서비스 제공을 위해 다음 정보를 수집합니다:
-- 필수: 이메일 주소, 이름(닉네임)
-- 선택: 휴대폰 번호 (본인확인 시)
+- 필수: 이메일 주소, 이름(닉네임), 휴대폰 번호
 - 자동 수집: 서비스 이용 기록, 접속 로그, 쿠키
 
 2. 개인정보의 이용 목적
 - 회원 가입 및 관리
+- 본인 확인 및 중복가입 방지
 - 서비스 제공 및 요금 정산
 - 고객 문의 응대
 - 서비스 개선 및 통계 분석
@@ -106,6 +108,15 @@ export default function RegisterPage() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isKakaoLoading, setIsKakaoLoading] = useState(false);
 
+  // 휴대폰 인증 상태
+  const [phone, setPhone] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [isSendingCode, setIsSendingCode] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [codeSent, setCodeSent] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+
   // 약관 동의 상태
   const [agreeAll, setAgreeAll] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
@@ -115,6 +126,87 @@ export default function RegisterPage() {
   // 약관 모달
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [modalContent, setModalContent] = useState<'terms' | 'privacy'>('terms');
+
+  // 카운트다운 타이머
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [countdown]);
+
+  // 휴대폰 번호 포맷팅
+  const formatPhoneNumber = (value: string) => {
+    const numbers = value.replace(/[^\d]/g, '');
+    if (numbers.length <= 3) return numbers;
+    if (numbers.length <= 7) return `${numbers.slice(0, 3)}-${numbers.slice(3)}`;
+    return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`;
+  };
+
+  // 인증번호 발송
+  const handleSendCode = async () => {
+    const phoneNumbers = phone.replace(/[^\d]/g, '');
+    if (phoneNumbers.length !== 11) {
+      toast.error('올바른 휴대폰 번호를 입력해주세요');
+      return;
+    }
+
+    setIsSendingCode(true);
+    try {
+      const response = await fetch(`${API_URL}/api/sms/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phoneNumbers }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success('인증번호가 발송되었습니다');
+        setCodeSent(true);
+        setCountdown(300); // 5분
+      } else {
+        toast.error(data.error || '인증번호 발송 실패');
+      }
+    } catch (error) {
+      toast.error('인증번호 발송 중 오류가 발생했습니다');
+    } finally {
+      setIsSendingCode(false);
+    }
+  };
+
+  // 인증번호 확인
+  const handleVerifyCode = async () => {
+    if (verificationCode.length !== 6) {
+      toast.error('6자리 인증번호를 입력해주세요');
+      return;
+    }
+
+    const phoneNumbers = phone.replace(/[^\d]/g, '');
+    setIsVerifying(true);
+    
+    try {
+      const response = await fetch(`${API_URL}/api/sms/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phoneNumbers, code: verificationCode }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success('휴대폰 인증 완료!');
+        setIsPhoneVerified(true);
+        setCountdown(0);
+      } else {
+        toast.error(data.error || '인증 실패');
+      }
+    } catch (error) {
+      toast.error('인증 중 오류가 발생했습니다');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
 
   // 전체 동의 핸들러
   const handleAgreeAll = () => {
@@ -136,14 +228,20 @@ export default function RegisterPage() {
     setShowTermsModal(true);
   };
 
-  // 필수 약관 동의 여부
+  // 필수 조건 확인
   const isRequiredAgreed = agreeTerms && agreePrivacy;
+  const canSubmit = isRequiredAgreed && isPhoneVerified;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!isRequiredAgreed) {
       toast.error('필수 약관에 동의해주세요');
+      return;
+    }
+
+    if (!isPhoneVerified) {
+      toast.error('휴대폰 인증을 완료해주세요');
       return;
     }
 
@@ -166,6 +264,11 @@ export default function RegisterPage() {
       return;
     }
 
+    if (!isPhoneVerified) {
+      toast.error('휴대폰 인증을 완료해주세요');
+      return;
+    }
+
     setIsGoogleLoading(true);
     try {
       await signInWithGoogle();
@@ -181,6 +284,11 @@ export default function RegisterPage() {
       return;
     }
 
+    if (!isPhoneVerified) {
+      toast.error('휴대폰 인증을 완료해주세요');
+      return;
+    }
+
     setIsKakaoLoading(true);
     try {
       await signInWithKakao();
@@ -188,6 +296,13 @@ export default function RegisterPage() {
       toast.error(error.message || '카카오 로그인 실패');
       setIsKakaoLoading(false);
     }
+  };
+
+  // 카운트다운 포맷
+  const formatCountdown = (seconds: number) => {
+    const min = Math.floor(seconds / 60);
+    const sec = seconds % 60;
+    return `${min}:${sec.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -201,8 +316,7 @@ export default function RegisterPage() {
             </div>
 
             {/* 약관 동의 */}
-            <div className="mb-6 p-4 bg-zinc-50 rounded-xl">
-              {/* 전체 동의 */}
+            <div className="mb-4 p-4 bg-zinc-50 rounded-xl">
               <label className="flex items-center gap-3 pb-3 border-b border-zinc-200 cursor-pointer">
                 <div 
                   onClick={handleAgreeAll}
@@ -214,7 +328,6 @@ export default function RegisterPage() {
               </label>
 
               <div className="mt-3 space-y-2">
-                {/* 이용약관 */}
                 <div className="flex items-center justify-between">
                   <label className="flex items-center gap-3 cursor-pointer flex-1">
                     <div 
@@ -232,15 +345,11 @@ export default function RegisterPage() {
                       이용약관 동의
                     </span>
                   </label>
-                  <button 
-                    onClick={() => openTermsModal('terms')}
-                    className="text-zinc-400 hover:text-zinc-600"
-                  >
+                  <button onClick={() => openTermsModal('terms')} className="text-zinc-400 hover:text-zinc-600">
                     <ChevronRight size={18} />
                   </button>
                 </div>
 
-                {/* 개인정보처리방침 */}
                 <div className="flex items-center justify-between">
                   <label className="flex items-center gap-3 cursor-pointer flex-1">
                     <div 
@@ -258,15 +367,11 @@ export default function RegisterPage() {
                       개인정보처리방침 동의
                     </span>
                   </label>
-                  <button 
-                    onClick={() => openTermsModal('privacy')}
-                    className="text-zinc-400 hover:text-zinc-600"
-                  >
+                  <button onClick={() => openTermsModal('privacy')} className="text-zinc-400 hover:text-zinc-600">
                     <ChevronRight size={18} />
                   </button>
                 </div>
 
-                {/* 마케팅 수신 */}
                 <div className="flex items-center justify-between">
                   <label className="flex items-center gap-3 cursor-pointer flex-1">
                     <div 
@@ -288,31 +393,86 @@ export default function RegisterPage() {
               </div>
             </div>
 
+            {/* 휴대폰 인증 */}
+            <div className="mb-6 p-4 bg-zinc-50 rounded-xl">
+              <div className="flex items-center gap-2 mb-3">
+                <Phone size={16} className="text-[#87D039]" />
+                <span className="font-bold text-zinc-900 text-sm">휴대폰 인증</span>
+                <span className="text-red-500 text-xs">(필수)</span>
+                {isPhoneVerified && (
+                  <span className="ml-auto flex items-center gap-1 text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
+                    <Shield size={12} />
+                    인증완료
+                  </span>
+                )}
+              </div>
+
+              {!isPhoneVerified ? (
+                <>
+                  <div className="flex gap-2 mb-2">
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(formatPhoneNumber(e.target.value))}
+                      placeholder="010-0000-0000"
+                      className="flex-1 px-4 py-2.5 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-[#87D039] text-sm"
+                      maxLength={13}
+                      disabled={codeSent && countdown > 0}
+                    />
+                    <button
+                      onClick={handleSendCode}
+                      disabled={isSendingCode || phone.replace(/[^\d]/g, '').length !== 11 || (codeSent && countdown > 0)}
+                      className="px-4 py-2.5 bg-zinc-900 text-white rounded-lg text-sm font-medium hover:bg-black transition disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                    >
+                      {isSendingCode ? <Loader2 className="animate-spin" size={16} /> : codeSent && countdown > 0 ? formatCountdown(countdown) : '인증요청'}
+                    </button>
+                  </div>
+
+                  {codeSent && (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={verificationCode}
+                        onChange={(e) => setVerificationCode(e.target.value.replace(/[^\d]/g, '').slice(0, 6))}
+                        placeholder="인증번호 6자리"
+                        className="flex-1 px-4 py-2.5 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-[#87D039] text-sm"
+                        maxLength={6}
+                      />
+                      <button
+                        onClick={handleVerifyCode}
+                        disabled={isVerifying || verificationCode.length !== 6}
+                        className="px-4 py-2.5 bg-[#87D039] text-black rounded-lg text-sm font-bold hover:bg-[#9AE045] transition disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                      >
+                        {isVerifying ? <Loader2 className="animate-spin" size={16} /> : '확인'}
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-zinc-600">
+                  <Check size={16} className="text-green-600" />
+                  {phone} 인증되었습니다
+                </div>
+              )}
+            </div>
+
             {/* 소셜 로그인 */}
             <div className="space-y-3 mb-6">
               <button
                 onClick={handleGoogleLogin}
-                disabled={isGoogleLoading || !isRequiredAgreed}
+                disabled={isGoogleLoading || !canSubmit}
                 className="w-full py-3 px-4 bg-white border border-zinc-200 rounded-xl font-medium text-zinc-700 hover:bg-zinc-50 transition flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isGoogleLoading ? (
-                  <Loader2 className="animate-spin" size={18} />
-                ) : (
-                  <GoogleIcon />
-                )}
+                {isGoogleLoading ? <Loader2 className="animate-spin" size={18} /> : <GoogleIcon />}
                 Google로 시작하기
               </button>
 
               <button
                 onClick={handleKakaoLogin}
-                disabled={isKakaoLoading || !isRequiredAgreed}
+                disabled={isKakaoLoading || !canSubmit}
                 className="w-full py-3 px-4 bg-[#FEE500] rounded-xl font-medium text-[#000000] hover:bg-[#FDD800] transition flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isKakaoLoading ? (
-                  <Loader2 className="animate-spin" size={18} />
-                ) : (
-                  <KakaoIcon />
-                )}
+                {isKakaoLoading ? <Loader2 className="animate-spin" size={18} /> : <KakaoIcon />}
                 카카오로 시작하기
               </button>
             </div>
@@ -367,7 +527,7 @@ export default function RegisterPage() {
 
               <button
                 type="submit"
-                disabled={isLoading || !isRequiredAgreed}
+                disabled={isLoading || !canSubmit}
                 className="w-full py-3 bg-[#87D039] text-black font-bold rounded-xl hover:bg-[#9AE045] transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isLoading ? <Loader2 className="animate-spin" size={20} /> : null}
@@ -393,10 +553,7 @@ export default function RegisterPage() {
               <h3 className="font-bold text-lg">
                 {modalContent === 'terms' ? '이용약관' : '개인정보처리방침'}
               </h3>
-              <button 
-                onClick={() => setShowTermsModal(false)}
-                className="p-2 hover:bg-zinc-100 rounded-full transition"
-              >
+              <button onClick={() => setShowTermsModal(false)} className="p-2 hover:bg-zinc-100 rounded-full transition">
                 <X size={20} />
               </button>
             </div>

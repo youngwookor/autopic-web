@@ -17,6 +17,7 @@ import uuid
 import httpx
 import secrets
 import hashlib
+import hmac
 import asyncio
 from datetime import datetime
 from typing import Optional, List, Dict
@@ -1795,6 +1796,115 @@ async def analyze_product(
     except Exception as e:
         print(f"분석 오류: {e}")
         return AnalyzeResponse(success=False, error=str(e))
+
+
+# ============================================================================
+# SMS 인증 (솔라피)
+# ============================================================================
+
+SOLAPI_API_KEY = os.getenv("SOLAPI_API_KEY", "NCSNAG6NANL6YDB5")
+SOLAPI_API_SECRET = os.getenv("SOLAPI_API_SECRET", "OU2SXN00ZPCW1ZUTCJ2MJSISV6BFXPS2")
+SOLAPI_SENDER = os.getenv("SOLAPI_SENDER", "01074708283")
+
+# 인증번호 임시 저장 (실제 운영에서는 Redis 권장)
+verification_codes: Dict[str, dict] = {}
+
+
+def get_solapi_headers():
+    """솔라피 API 인증 헤더 생성"""
+    import datetime as dt
+    date = dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    salt = secrets.token_hex(16)
+    signature = hmac.new(
+        SOLAPI_API_SECRET.encode(),
+        (date + salt).encode(),
+        hashlib.sha256
+    ).hexdigest()
+    
+    return {
+        "Authorization": f"HMAC-SHA256 apiKey={SOLAPI_API_KEY}, date={date}, salt={salt}, signature={signature}",
+        "Content-Type": "application/json"
+    }
+
+
+class SMSSendRequest(BaseModel):
+    phone: str
+
+
+class SMSVerifyRequest(BaseModel):
+    phone: str
+    code: str
+
+
+@app.post("/api/sms/send")
+async def send_verification_sms(request: SMSSendRequest):
+    """인증번호 SMS 발송"""
+    phone = request.phone.replace("-", "").replace(" ", "")
+    
+    # 6자리 인증번호 생성
+    code = str(secrets.randbelow(900000) + 100000)
+    
+    # 인증번호 저장 (5분 유효)
+    verification_codes[phone] = {
+        "code": code,
+        "expires_at": time.time() + 300,  # 5분
+        "attempts": 0
+    }
+    
+    # 솔라피 API 호출
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.solapi.com/messages/v4/send",
+                headers=get_solapi_headers(),
+                json={
+                    "message": {
+                        "to": phone,
+                        "from": SOLAPI_SENDER,
+                        "text": f"[AUTOPIC] 인증번호는 [{code}]입니다. 5분 내에 입력해주세요."
+                    }
+                }
+            )
+        
+        if response.status_code == 200:
+            return {"success": True, "message": "인증번호가 발송되었습니다"}
+        else:
+            print(f"SMS 발송 실패: {response.text}")
+            return {"success": False, "error": "SMS 발송에 실패했습니다"}
+            
+    except Exception as e:
+        print(f"SMS 발송 오류: {e}")
+        return {"success": False, "error": "SMS 발송 중 오류가 발생했습니다"}
+
+
+@app.post("/api/sms/verify")
+async def verify_sms_code(request: SMSVerifyRequest):
+    """인증번호 검증"""
+    phone = request.phone.replace("-", "").replace(" ", "")
+    
+    if phone not in verification_codes:
+        return {"success": False, "error": "인증번호를 먼저 요청해주세요"}
+    
+    stored = verification_codes[phone]
+    
+    # 만료 체크
+    if time.time() > stored["expires_at"]:
+        del verification_codes[phone]
+        return {"success": False, "error": "인증번호가 만료되었습니다. 다시 요청해주세요"}
+    
+    # 시도 횟수 체크 (최대 5회)
+    if stored["attempts"] >= 5:
+        del verification_codes[phone]
+        return {"success": False, "error": "인증 시도 횟수를 초과했습니다. 다시 요청해주세요"}
+    
+    stored["attempts"] += 1
+    
+    # 인증번호 확인
+    if stored["code"] == request.code:
+        del verification_codes[phone]
+        return {"success": True, "message": "인증되었습니다"}
+    else:
+        return {"success": False, "error": f"인증번호가 일치하지 않습니다 (남은 시도: {5 - stored['attempts']}회)"}
 
 
 # ============================================================================
