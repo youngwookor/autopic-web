@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { supabase, waitForSessionRestore } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { useAuthStore, useCreditsStore } from '@/lib/store';
 import { 
   User, CreditCard, Image, Settings, LogOut, 
@@ -105,31 +105,25 @@ export default function MyPage() {
 
     const init = async () => {
       try {
-        // 1. 세션 복원이 완료될 때까지 대기 (핵심!)
-        await waitForSessionRestore();
-        
-        if (!isMounted) return;
-
-        // 2. 세션 확인
+        // Supabase 세션 확인
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error || !session?.user) {
-          console.log('No session, redirecting to login');
           if (isMounted) router.replace('/login');
           return;
         }
 
-        // 3. 유저 정보 설정
+        // 유저 정보 설정
         setUser({
           id: session.user.id,
           email: session.user.email || '',
           name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
         });
         
-        // 4. 데이터 로드
+        // 데이터 로드
         await loadData(session.user.id);
         
-        // 5. 로딩 완료
+        // 로딩 완료
         if (isMounted) {
           setIsLoading(false);
         }
@@ -162,11 +156,6 @@ export default function MyPage() {
       await supabase.auth.signOut();
       storeLogout();
       setBalance(0);
-      
-      if (typeof window !== 'undefined') {
-        localStorage.clear();
-        sessionStorage.clear();
-      }
       
       toast.success('로그아웃 되었습니다');
       window.location.href = '/';

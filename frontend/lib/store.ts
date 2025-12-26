@@ -1,6 +1,5 @@
-// 전역 상태 관리 (Zustand)
+// 전역 상태 관리 (Zustand) - persist 제거로 hydration 문제 해결
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 
 // ============================================================================
 // 간단한 타입 정의 (Supabase용)
@@ -19,7 +18,7 @@ interface SimpleBalance {
 }
 
 // ============================================================================
-// Auth Store
+// Auth Store (persist 제거!)
 // ============================================================================
 
 interface AuthState {
@@ -32,28 +31,20 @@ interface AuthState {
   logout: () => void;
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set) => ({
-      user: null,
-      isAuthenticated: false,
-      isLoading: false,
-      setUser: (user) => {
-        set({ user, isAuthenticated: !!user });
-      },
-      logout: () => {
-        set({ user: null, isAuthenticated: false });
-      },
-    }),
-    {
-      name: 'auth-storage',
-      partialize: (state) => ({ user: state.user, isAuthenticated: state.isAuthenticated }),
-    }
-  )
-);
+export const useAuthStore = create<AuthState>()((set) => ({
+  user: null,
+  isAuthenticated: false,
+  isLoading: false,
+  setUser: (user) => {
+    set({ user, isAuthenticated: !!user });
+  },
+  logout: () => {
+    set({ user: null, isAuthenticated: false });
+  },
+}));
 
 // ============================================================================
-// Credits Store
+// Credits Store (persist 제거!)
 // ============================================================================
 
 interface CreditsState {
@@ -66,41 +57,33 @@ interface CreditsState {
   fetchBalance: () => Promise<void>;
 }
 
-export const useCreditsStore = create<CreditsState>()(
-  persist(
-    (set, get) => ({
-      balance: null,
-      isLoading: false,
-      setBalance: (credits) => {
-        set({ balance: { credits } });
-      },
-      updateBalance: (credits) => {
-        set({ balance: { credits } });
-      },
-      fetchBalance: async () => {
-        const authStore = useAuthStore.getState();
-        if (!authStore.user?.id) return;
-        
-        set({ isLoading: true });
-        try {
-          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/credits/${authStore.user.id}`);
-          if (response.ok) {
-            const data = await response.json();
-            set({ balance: { credits: data.credits || 0 } });
-          }
-        } catch (error) {
-          console.error('Failed to fetch balance:', error);
-        } finally {
-          set({ isLoading: false });
-        }
-      },
-    }),
-    {
-      name: 'credits-storage',
-      partialize: (state) => ({ balance: state.balance }),
+export const useCreditsStore = create<CreditsState>()((set) => ({
+  balance: null,
+  isLoading: false,
+  setBalance: (credits) => {
+    set({ balance: { credits } });
+  },
+  updateBalance: (credits) => {
+    set({ balance: { credits } });
+  },
+  fetchBalance: async () => {
+    const authStore = useAuthStore.getState();
+    if (!authStore.user?.id) return;
+    
+    set({ isLoading: true });
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/credits/${authStore.user.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        set({ balance: { credits: data.credits || 0 } });
+      }
+    } catch (error) {
+      console.error('Failed to fetch balance:', error);
+    } finally {
+      set({ isLoading: false });
     }
-  )
-);
+  },
+}));
 
 // ============================================================================
 // Generation Store (이미지 생성 상태)

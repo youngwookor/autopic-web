@@ -14,44 +14,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 });
 
 // ============================================
-// 세션 복원 완료 대기 함수 (핵심!)
-// ============================================
-
-let isSessionRestored = false;
-let sessionRestoreResolvers: (() => void)[] = [];
-
-// 세션 복원 완료 시 호출될 리스너 설정
-supabase.auth.onAuthStateChange((event) => {
-  // 첫 번째 이벤트가 오면 세션 복원 완료
-  if (!isSessionRestored) {
-    console.log('Session restore complete, event:', event);
-    isSessionRestored = true;
-    sessionRestoreResolvers.forEach(resolve => resolve());
-    sessionRestoreResolvers = [];
-  }
-});
-
-// 세션 복원이 완료될 때까지 대기하는 함수
-export const waitForSessionRestore = (): Promise<void> => {
-  if (isSessionRestored) {
-    return Promise.resolve();
-  }
-  
-  return new Promise((resolve) => {
-    sessionRestoreResolvers.push(resolve);
-    
-    // 안전장치: 3초 후에도 복원 안 되면 그냥 진행
-    setTimeout(() => {
-      if (!isSessionRestored) {
-        console.log('Session restore timeout, proceeding anyway');
-        isSessionRestored = true;
-        resolve();
-      }
-    }, 3000);
-  });
-};
-
-// ============================================
 // 인증 함수
 // ============================================
 
@@ -106,8 +68,6 @@ export async function signInWithKakao() {
 export async function signOut() {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('autopic-auth');
-    localStorage.removeItem('auth-storage');
-    localStorage.removeItem('credits-storage');
   }
   
   const { error } = await supabase.auth.signOut({ scope: 'global' });
