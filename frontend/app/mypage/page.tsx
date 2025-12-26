@@ -40,6 +40,25 @@ interface ApiKey {
   created_at: string;
 }
 
+// localStorage에 인증 토큰이 있는지 확인
+const hasAuthToken = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  
+  // autopic-auth 키 확인
+  const autopicAuth = localStorage.getItem('autopic-auth');
+  if (autopicAuth) return true;
+  
+  // sb- 로 시작하는 Supabase 기본 키 확인
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('sb-') && key.includes('auth-token')) {
+      return true;
+    }
+  }
+  
+  return false;
+};
+
 export default function MyPage() {
   const router = useRouter();
   const { user, setUser, logout: storeLogout } = useAuthStore();
@@ -54,7 +73,6 @@ export default function MyPage() {
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-  // 데이터 로드 함수
   const loadData = useCallback(async (userId: string) => {
     try {
       const { data: profileData } = await supabase
@@ -99,76 +117,95 @@ export default function MyPage() {
     }
   }, [API_URL, setBalance]);
 
+  const setupUser = useCallback(async (session: any) => {
+    const userId = session.user.id;
+    setUser({
+      id: userId,
+      email: session.user.email || '',
+      name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
+    });
+    await loadData(userId);
+    setIsLoading(false);
+  }, [setUser, loadData]);
+
   useEffect(() => {
     let isMounted = true;
-    let retryCount = 0;
-    const maxRetries = 5;
+    let pollCount = 0;
+    const maxPolls = 20; // 최대 20번 (총 4초)
+    let pollTimer: NodeJS.Timeout;
 
-    // 세션 확인 함수 (재시도 로직 포함)
     const checkSession = async (): Promise<boolean> => {
       const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session?.user) {
-        if (isMounted) {
-          const userId = session.user.id;
-          setUser({
-            id: userId,
-            email: session.user.email || '',
-            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
-          });
-          await loadData(userId);
-          setIsLoading(false);
-        }
+      if (session?.user && isMounted) {
+        await setupUser(session);
         return true;
       }
       return false;
     };
 
-    // 재시도 로직
-    const initWithRetry = async () => {
-      const hasSession = await checkSession();
-      
-      if (!hasSession && retryCount < maxRetries) {
-        retryCount++;
-        // 점점 늘어나는 딜레이 (200ms, 400ms, 600ms, 800ms, 1000ms)
-        setTimeout(() => {
-          if (isMounted) {
-            initWithRetry();
+    const startPolling = () => {
+      pollTimer = setInterval(async () => {
+        pollCount++;
+        
+        const hasSession = await checkSession();
+        if (hasSession || pollCount >= maxPolls) {
+          clearInterval(pollTimer);
+          
+          if (!hasSession && isMounted) {
+            // 폴링 끝났는데도 세션 없으면 로그인 페이지로
+            router.replace('/login');
           }
-        }, retryCount * 200);
-      } else if (!hasSession && retryCount >= maxRetries) {
-        // 최대 재시도 후에도 세션 없으면 로그인 페이지로
+        }
+      }, 200); // 200ms마다 확인
+    };
+
+    const init = async () => {
+      // 1. 먼저 바로 세션 확인
+      const hasSession = await checkSession();
+      if (hasSession) return;
+
+      // 2. 세션 없으면, localStorage에 토큰이 있는지 확인
+      const tokenExists = hasAuthToken();
+      
+      if (tokenExists) {
+        // 토큰이 있으면 세션 복원 중일 수 있음 - 폴링 시작
+        console.log('Token found, waiting for session restore...');
+        startPolling();
+      } else {
+        // 토큰도 없으면 바로 로그인 페이지로
+        console.log('No token found, redirecting to login');
         if (isMounted) {
           router.replace('/login');
         }
       }
     };
 
-    initWithRetry();
+    // 약간의 초기 딜레이 후 시작 (DOM 안정화)
+    const initTimer = setTimeout(() => {
+      init();
+    }, 50);
 
-    // Auth 상태 변경 리스너 (로그아웃 감지용)
+    // Auth 상태 변경 리스너
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === 'SIGNED_OUT' && isMounted) {
+        if (!isMounted) return;
+        
+        if (event === 'SIGNED_OUT') {
           router.replace('/login');
-        } else if (event === 'SIGNED_IN' && session?.user && isMounted && isLoading) {
-          const userId = session.user.id;
-          setUser({
-            id: userId,
-            email: session.user.email || '',
-            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
-          });
-          await loadData(userId);
-          setIsLoading(false);
+        } else if (event === 'SIGNED_IN' && session?.user && isLoading) {
+          clearInterval(pollTimer);
+          await setupUser(session);
         }
       }
     );
 
     return () => {
       isMounted = false;
+      clearTimeout(initTimer);
+      clearInterval(pollTimer);
       subscription.unsubscribe();
     };
-  }, [router, setUser, loadData]);
+  }, [router, setupUser, isLoading]);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
