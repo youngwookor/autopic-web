@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { supabase, waitForSessionRestore } from '@/lib/supabase';
 import { useAuthStore, useCreditsStore } from '@/lib/store';
 import { 
   User, CreditCard, Image, Settings, LogOut, 
@@ -51,7 +51,6 @@ export default function MyPage() {
   const [profile, setProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [dataLoaded, setDataLoaded] = useState(false);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -100,58 +99,60 @@ export default function MyPage() {
     }
   }, [API_URL, setBalance]);
 
-  // 세션 체크 및 데이터 로드 - 단순화
+  // 세션 체크 및 데이터 로드
   useEffect(() => {
-    // 이미 데이터 로드됐으면 스킵
-    if (dataLoaded) return;
+    let isMounted = true;
 
-    const checkSessionAndLoad = async () => {
+    const init = async () => {
       try {
-        // getSession으로 직접 세션 확인 (가장 확실한 방법)
+        // 1. 세션 복원이 완료될 때까지 대기 (핵심!)
+        await waitForSessionRestore();
+        
+        if (!isMounted) return;
+
+        // 2. 세션 확인
         const { data: { session }, error } = await supabase.auth.getSession();
         
-        if (error) {
-          console.error('Session error:', error);
-          router.replace('/login');
+        if (error || !session?.user) {
+          console.log('No session, redirecting to login');
+          if (isMounted) router.replace('/login');
           return;
         }
 
-        if (session?.user) {
-          // 세션 있음 - 유저 설정 및 데이터 로드
-          setUser({
-            id: session.user.id,
-            email: session.user.email || '',
-            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
-          });
-          
-          await loadData(session.user.id);
-          setDataLoaded(true);
+        // 3. 유저 정보 설정
+        setUser({
+          id: session.user.id,
+          email: session.user.email || '',
+          name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
+        });
+        
+        // 4. 데이터 로드
+        await loadData(session.user.id);
+        
+        // 5. 로딩 완료
+        if (isMounted) {
           setIsLoading(false);
-        } else {
-          // 세션 없음 - 로그인 페이지로
-          router.replace('/login');
         }
       } catch (err) {
-        console.error('Auth check error:', err);
-        router.replace('/login');
+        console.error('Init error:', err);
+        if (isMounted) router.replace('/login');
       }
     };
 
-    checkSessionAndLoad();
-  }, [dataLoaded, router, setUser, loadData]);
+    init();
 
-  // 로그아웃 감지용 리스너 (별도)
-  useEffect(() => {
+    // 로그아웃 감지 리스너
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT') {
+      if (event === 'SIGNED_OUT' && isMounted) {
         router.replace('/login');
       }
     });
 
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
-  }, [router]);
+  }, [router, setUser, loadData]);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;

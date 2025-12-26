@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-// 세션 지속성 및 자동 갱신 옵션 추가
+// Supabase 클라이언트 생성
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
@@ -12,6 +12,44 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     storageKey: 'autopic-auth',
   },
 });
+
+// ============================================
+// 세션 복원 완료 대기 함수 (핵심!)
+// ============================================
+
+let isSessionRestored = false;
+let sessionRestoreResolvers: (() => void)[] = [];
+
+// 세션 복원 완료 시 호출될 리스너 설정
+supabase.auth.onAuthStateChange((event) => {
+  // 첫 번째 이벤트가 오면 세션 복원 완료
+  if (!isSessionRestored) {
+    console.log('Session restore complete, event:', event);
+    isSessionRestored = true;
+    sessionRestoreResolvers.forEach(resolve => resolve());
+    sessionRestoreResolvers = [];
+  }
+});
+
+// 세션 복원이 완료될 때까지 대기하는 함수
+export const waitForSessionRestore = (): Promise<void> => {
+  if (isSessionRestored) {
+    return Promise.resolve();
+  }
+  
+  return new Promise((resolve) => {
+    sessionRestoreResolvers.push(resolve);
+    
+    // 안전장치: 3초 후에도 복원 안 되면 그냥 진행
+    setTimeout(() => {
+      if (!isSessionRestored) {
+        console.log('Session restore timeout, proceeding anyway');
+        isSessionRestored = true;
+        resolve();
+      }
+    }, 3000);
+  });
+};
 
 // ============================================
 // 인증 함수
@@ -45,7 +83,7 @@ export async function signInWithGoogle() {
       redirectTo: `${window.location.origin}/auth/callback`,
       queryParams: {
         access_type: 'offline',
-        prompt: 'select_account',  // 'consent' → 'select_account'로 변경 (매번 동의 요청 X)
+        prompt: 'select_account',
       },
     },
   });
@@ -66,7 +104,6 @@ export async function signInWithKakao() {
 }
 
 export async function signOut() {
-  // 로컬 스토리지 클리어
   if (typeof window !== 'undefined') {
     localStorage.removeItem('autopic-auth');
     localStorage.removeItem('auth-storage');
@@ -112,20 +149,17 @@ export async function updateProfile(userId: string, updates: { name?: string; ph
 }
 
 export async function updateCredits(userId: string, creditsToDeduct: number) {
-  // 현재 크레딧 확인
   const profile = await getProfile(userId);
   if (profile.credits < creditsToDeduct) {
     throw new Error('크레딧이 부족합니다');
   }
   
-  // 크레딧 차감
   const { error } = await supabase
     .from('profiles')
     .update({ credits: profile.credits - creditsToDeduct })
     .eq('id', userId);
   if (error) throw error;
   
-  // 사용 내역 기록
   await supabase.from('usages').insert({
     user_id: userId,
     action: 'image_generation',
@@ -138,14 +172,12 @@ export async function updateCredits(userId: string, creditsToDeduct: number) {
 export async function addCredits(userId: string, credits: number, paymentKey?: string) {
   const profile = await getProfile(userId);
   
-  // 크레딧 추가
   const { error } = await supabase
     .from('profiles')
     .update({ credits: profile.credits + credits })
     .eq('id', userId);
   if (error) throw error;
   
-  // 결제 내역 기록
   if (paymentKey) {
     await supabase.from('payments').insert({
       user_id: userId,
