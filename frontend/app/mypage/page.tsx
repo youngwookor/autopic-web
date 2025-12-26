@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
@@ -51,61 +51,60 @@ export default function MyPage() {
   const [profile, setProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+  // 데이터 로드 함수
+  const loadData = useCallback(async (userId: string) => {
+    try {
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      
+      if (profileData) {
+        setProfile(profileData);
+        setBalance(profileData.credits || 0);
+      }
+
+      const { data: generationsData } = await supabase
+        .from('generations')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      setGenerations(generationsData || []);
+
+      const { data: usagesData } = await supabase
+        .from('usages')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      setUsages(usagesData || []);
+
+      try {
+        const keysResponse = await fetch(`${API_URL}/api/keys/${userId}`);
+        if (keysResponse.ok) {
+          const keysData = await keysResponse.json();
+          setApiKeys(keysData.keys || []);
+        }
+      } catch (e) {}
+    } catch (error) {
+      console.error('Data load error:', error);
+    }
+  }, [API_URL, setBalance]);
+
   useEffect(() => {
     let isMounted = true;
+    let timeoutId: NodeJS.Timeout;
 
-    const loadData = async (userId: string) => {
-      try {
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .single();
-        
-        if (profileData && isMounted) {
-          setProfile(profileData);
-          setBalance(profileData.credits || 0);
-        }
-
-        const { data: generationsData } = await supabase
-          .from('generations')
-          .select('*')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(100);
-        if (isMounted) setGenerations(generationsData || []);
-
-        const { data: usagesData } = await supabase
-          .from('usages')
-          .select('*')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(50);
-        if (isMounted) setUsages(usagesData || []);
-
-        try {
-          const keysResponse = await fetch(`${API_URL}/api/keys/${userId}`);
-          if (keysResponse.ok) {
-            const keysData = await keysResponse.json();
-            if (isMounted) setApiKeys(keysData.keys || []);
-          }
-        } catch (e) {}
-      } catch (error) {
-        console.error('Data load error:', error);
-      }
-    };
-
-    const init = async () => {
-      // 간단하게 500ms 대기 후 세션 확인 (세션 복원 시간 확보)
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+    // 세션 확인 및 처리
+    const handleSession = async (session: any) => {
       if (!isMounted) return;
 
-      const { data: { session } } = await supabase.auth.getSession();
-      
       if (session?.user) {
         const userId = session.user.id;
         
@@ -119,29 +118,75 @@ export default function MyPage() {
         
         if (isMounted) {
           setIsLoading(false);
+          setAuthChecked(true);
         }
       } else {
-        // 세션 없으면 로그인 페이지로
+        // 세션 없음 - 로그인 페이지로
         if (isMounted) {
+          setAuthChecked(true);
           router.replace('/login');
         }
       }
     };
 
-    init();
+    // onAuthStateChange로 세션 이벤트 감지 (가장 안정적인 방법)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('MyPage auth event:', event);
+        
+        if (!isMounted) return;
 
-    // 로그아웃 감지용 리스너
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT' && isMounted) {
-        router.replace('/login');
+        if (event === 'SIGNED_OUT') {
+          router.replace('/login');
+          return;
+        }
+
+        // INITIAL_SESSION, SIGNED_IN, TOKEN_REFRESHED 등의 이벤트에서 세션 처리
+        if (session?.user && !authChecked) {
+          await handleSession(session);
+        }
       }
-    });
+    );
+
+    // 초기 세션 확인 (onAuthStateChange가 즉시 발생하지 않는 경우 대비)
+    const checkInitialSession = async () => {
+      // 잠시 대기 (Supabase 내부 초기화 시간)
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      if (!isMounted || authChecked) return;
+
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user) {
+        await handleSession(session);
+      } else {
+        // 세션이 없으면 조금 더 기다렸다가 다시 확인
+        timeoutId = setTimeout(async () => {
+          if (!isMounted || authChecked) return;
+          
+          const { data: { session: retrySession } } = await supabase.auth.getSession();
+          
+          if (retrySession?.user) {
+            await handleSession(retrySession);
+          } else {
+            // 최종적으로 세션 없음 확인
+            if (isMounted) {
+              setAuthChecked(true);
+              router.replace('/login');
+            }
+          }
+        }, 1000); // 1초 더 대기 후 재확인
+      }
+    };
+
+    checkInitialSession();
 
     return () => {
       isMounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
-  }, [router, setUser, setBalance, API_URL]);
+  }, [router, setUser, loadData, authChecked]);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
