@@ -147,7 +147,12 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">비밀번호</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-zinc-700">비밀번호</label>
+                <Link href="/forgot-password" className="text-xs text-[#87D039] hover:underline">
+                  비밀번호 찾기
+                </Link>
+              </div>
               <input
                 type="password"
                 value={password}
