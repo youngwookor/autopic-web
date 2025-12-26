@@ -57,7 +57,6 @@ export default function MyPage() {
   // 데이터 로드 함수
   const loadData = useCallback(async (userId: string) => {
     try {
-      // 프로필 로드
       const { data: profileData } = await supabase
         .from('profiles')
         .select('*')
@@ -69,7 +68,6 @@ export default function MyPage() {
         setBalance(profileData.credits || 0);
       }
 
-      // 생성 내역 로드
       const { data: generationsData } = await supabase
         .from('generations')
         .select('*')
@@ -78,7 +76,6 @@ export default function MyPage() {
         .limit(100);
       setGenerations(generationsData || []);
 
-      // 사용 내역 로드
       const { data: usagesData } = await supabase
         .from('usages')
         .select('*')
@@ -87,7 +84,6 @@ export default function MyPage() {
         .limit(50);
       setUsages(usagesData || []);
 
-      // API 키 로드
       try {
         const keysResponse = await fetch(`${API_URL}/api/keys/${userId}`);
         if (keysResponse.ok) {
@@ -105,52 +101,74 @@ export default function MyPage() {
 
   useEffect(() => {
     let isMounted = true;
-    let timeoutId: NodeJS.Timeout;
+    let retryCount = 0;
+    const maxRetries = 5;
 
-    // onAuthStateChange를 먼저 등록하고 INITIAL_SESSION 이벤트를 기다림
+    // 세션 확인 함수 (재시도 로직 포함)
+    const checkSession = async (): Promise<boolean> => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user) {
+        if (isMounted) {
+          const userId = session.user.id;
+          setUser({
+            id: userId,
+            email: session.user.email || '',
+            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
+          });
+          await loadData(userId);
+          setIsLoading(false);
+        }
+        return true;
+      }
+      return false;
+    };
+
+    // 재시도 로직
+    const initWithRetry = async () => {
+      const hasSession = await checkSession();
+      
+      if (!hasSession && retryCount < maxRetries) {
+        retryCount++;
+        // 점점 늘어나는 딜레이 (200ms, 400ms, 600ms, 800ms, 1000ms)
+        setTimeout(() => {
+          if (isMounted) {
+            initWithRetry();
+          }
+        }, retryCount * 200);
+      } else if (!hasSession && retryCount >= maxRetries) {
+        // 최대 재시도 후에도 세션 없으면 로그인 페이지로
+        if (isMounted) {
+          router.replace('/login');
+        }
+      }
+    };
+
+    initWithRetry();
+
+    // Auth 상태 변경 리스너 (로그아웃 감지용)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth event:', event, 'Session:', !!session);
-        
-        if (!isMounted) return;
-
-        // INITIAL_SESSION 또는 SIGNED_IN 이벤트에서 세션 처리
-        if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          if (session?.user) {
-            const userId = session.user.id;
-            
-            setUser({
-              id: userId,
-              email: session.user.email || '',
-              name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
-            });
-            
-            await loadData(userId);
-            setIsLoading(false);
-          } else if (event === 'INITIAL_SESSION') {
-            // 세션이 없으면 로그인 페이지로
-            router.replace('/login');
-          }
-        } else if (event === 'SIGNED_OUT') {
+        if (event === 'SIGNED_OUT' && isMounted) {
           router.replace('/login');
+        } else if (event === 'SIGNED_IN' && session?.user && isMounted && isLoading) {
+          const userId = session.user.id;
+          setUser({
+            id: userId,
+            email: session.user.email || '',
+            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
+          });
+          await loadData(userId);
+          setIsLoading(false);
         }
       }
     );
 
-    // 안전장치: 5초 후에도 로딩 중이면 로그인 페이지로
-    timeoutId = setTimeout(() => {
-      if (isMounted && isLoading) {
-        console.log('Timeout: redirecting to login');
-        router.replace('/login');
-      }
-    }, 5000);
-
     return () => {
       isMounted = false;
       subscription.unsubscribe();
-      clearTimeout(timeoutId);
     };
-  }, [router, setUser, loadData, isLoading]);
+  }, [router, setUser, loadData]);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -207,7 +225,6 @@ export default function MyPage() {
     return modes[mode] || mode;
   };
 
-  // 로딩 중
   if (isLoading) {
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
@@ -241,7 +258,6 @@ export default function MyPage() {
 
   return (
     <div className="min-h-screen bg-zinc-50">
-      {/* 헤더 */}
       <header className="bg-white border-b border-zinc-200">
         <div className="max-w-6xl mx-auto px-4 md:px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -266,7 +282,6 @@ export default function MyPage() {
       </header>
 
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8">
-        {/* 탭 네비게이션 */}
         <div className="flex gap-1 md:gap-2 bg-white p-1 md:p-1.5 rounded-xl md:rounded-2xl border border-zinc-200 mb-6 md:mb-8 overflow-x-auto">
           {tabs.map((tab) => (
             <button
@@ -284,10 +299,8 @@ export default function MyPage() {
           ))}
         </div>
 
-        {/* 탭 컨텐츠 */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
-            {/* 프로필 카드 */}
             <div className="bg-white rounded-2xl md:rounded-3xl border border-zinc-200 p-6 md:p-8">
               <div className="flex items-center gap-4 mb-6">
                 <div className="w-16 h-16 md:w-20 md:h-20 bg-gradient-to-br from-[#87D039] to-[#6BBF2A] rounded-full flex items-center justify-center text-white text-2xl md:text-3xl font-bold">
@@ -319,7 +332,6 @@ export default function MyPage() {
               </div>
             </div>
 
-            {/* 크레딧 카드 */}
             <div className="bg-zinc-900 text-white rounded-2xl md:rounded-3xl p-6 md:p-8">
               <p className="text-zinc-400 text-sm mb-2">보유 크레딧</p>
               <p className="text-4xl md:text-5xl font-bold mb-4">{formatNumber(currentCredits)}</p>
@@ -344,7 +356,6 @@ export default function MyPage() {
               </Link>
             </div>
 
-            {/* API 키 카드 */}
             <div className="bg-white rounded-2xl md:rounded-3xl border border-zinc-200 p-6 md:p-8">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
@@ -388,7 +399,6 @@ export default function MyPage() {
               </Link>
             </div>
 
-            {/* 최근 생성 이미지 */}
             <div className="bg-white rounded-2xl md:rounded-3xl border border-zinc-200 p-6 md:p-8">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-lg">최근 생성 이미지</h3>
