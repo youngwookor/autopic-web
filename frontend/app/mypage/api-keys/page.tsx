@@ -258,11 +258,15 @@ export default function ApiKeysPage() {
                 대량 일괄 처리, 상품명 정제, SEO 자동 생성 등 고급 기능을 이용하세요
               </p>
               <div className="flex flex-wrap gap-3">
-                <button className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-lg font-medium text-sm hover:bg-zinc-100 transition-colors">
+                <a 
+                  href="https://ryehnwfulpkmeqcsiodm.supabase.co/storage/v1/object/public/downloads/Autopic_v2.7_Windows.zip" 
+                  download
+                  className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-lg font-medium text-sm hover:bg-zinc-100 transition-colors"
+                >
                   <Download size={16} />
                   Windows 다운로드
-                </button>
-                <button className="flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg font-medium text-sm hover:bg-white/20 transition-colors" disabled>
+                </a>
+                <button className="flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg font-medium text-sm hover:bg-white/20 transition-colors cursor-not-allowed" disabled>
                   <Download size={16} />
                   Mac (준비중)
                 </button>
