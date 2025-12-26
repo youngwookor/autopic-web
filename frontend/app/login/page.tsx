@@ -54,7 +54,7 @@ export default function LoginPage() {
         });
         updateBalance(profile.credits);
         
-        toast.success(`${profile.name || '회원'}님 환영합니다!`);
+        // toast는 AuthProvider에서 처리
         router.push('/');
       }
     } catch (error: any) {

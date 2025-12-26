@@ -176,7 +176,7 @@ export default function MyPage() {
   }
 
   const tabs = [
-    { id: 'overview', label: '개요', icon: User },
+    { id: 'overview', label: '회원정보', icon: User },
     { id: 'generations', label: '생성 내역', icon: Image },
     { id: 'credits', label: '크레딧', icon: CreditCard },
     { id: 'settings', label: '설정', icon: Settings },

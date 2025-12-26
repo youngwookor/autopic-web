@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore, useCreditsStore } from '@/lib/store';
@@ -18,6 +18,11 @@ import {
   ImageIcon,
   Package,
   X,
+  Share2,
+  Link2,
+  RefreshCw,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -29,6 +34,31 @@ const MODEL_CONFIG = {
 };
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+// 알림음 재생 함수
+const playNotificationSound = () => {
+  try {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    // 성공 알림음 (도-미-솔 화음)
+    oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
+    oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1); // E5
+    oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.2); // G5
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.5);
+  } catch (e) {
+    console.log('Audio not supported');
+  }
+};
 
 export default function Studio() {
   const router = useRouter();
@@ -50,11 +80,28 @@ export default function Studio() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  
+  // Pull to Refresh
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pullDistance, setPullDistance] = useState(0);
+  const pullStartY = useRef(0);
+  const isPulling = useRef(false);
+  
+  // 핀치 줌
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomPosition, setZoomPosition] = useState({ x: 0, y: 0 });
+  const [isZooming, setIsZooming] = useState(false);
+  const initialDistance = useRef(0);
+  const zoomImageRef = useRef<HTMLDivElement>(null);
+
+  // 공유 메뉴
+  const [showShareMenu, setShowShareMenu] = useState(false);
 
   const mainInputRef = useRef<HTMLInputElement>(null);
   const subInputRef = useRef<HTMLInputElement>(null);
   const generateButtonRef = useRef<HTMLDivElement>(null);
   const resultSectionRef = useRef<HTMLDivElement>(null);
+  const studioRef = useRef<HTMLElement>(null);
 
   const requiredCredits = MODEL_CONFIG[modelType].credits;
   const credits = balance?.credits || 0;
@@ -66,6 +113,114 @@ export default function Studio() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // Pull to Refresh 핸들러
+  const handleTouchStart = useCallback((e: TouchEvent) => {
+    if (window.scrollY === 0 && isAuthenticated) {
+      pullStartY.current = e.touches[0].clientY;
+      isPulling.current = true;
+    }
+  }, [isAuthenticated]);
+
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    if (!isPulling.current) return;
+    
+    const currentY = e.touches[0].clientY;
+    const diff = currentY - pullStartY.current;
+    
+    if (diff > 0 && diff < 150) {
+      setPullDistance(diff);
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(async () => {
+    if (pullDistance > 80 && isAuthenticated && user?.id) {
+      setIsRefreshing(true);
+      
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('credits')
+          .eq('id', user.id)
+          .single();
+        
+        if (profile) {
+          setBalance(profile.credits || 0);
+          toast.success('크레딧 정보가 갱신되었습니다');
+        }
+      } catch (e) {
+        console.error('Refresh error:', e);
+      } finally {
+        setIsRefreshing(false);
+      }
+    }
+    
+    setPullDistance(0);
+    isPulling.current = false;
+  }, [pullDistance, isAuthenticated, user?.id, setBalance]);
+
+  useEffect(() => {
+    const studio = studioRef.current;
+    if (!studio || !isMobile) return;
+
+    studio.addEventListener('touchstart', handleTouchStart, { passive: true });
+    studio.addEventListener('touchmove', handleTouchMove, { passive: true });
+    studio.addEventListener('touchend', handleTouchEnd);
+
+    return () => {
+      studio.removeEventListener('touchstart', handleTouchStart);
+      studio.removeEventListener('touchmove', handleTouchMove);
+      studio.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isMobile, handleTouchStart, handleTouchMove, handleTouchEnd]);
+
+  // 핀치 줌 핸들러
+  const handlePinchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      initialDistance.current = Math.sqrt(dx * dx + dy * dy);
+      setIsZooming(true);
+    }
+  };
+
+  const handlePinchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && isZooming) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const currentDistance = Math.sqrt(dx * dx + dy * dy);
+      
+      const scale = currentDistance / initialDistance.current;
+      const newZoom = Math.min(Math.max(zoomLevel * scale, 1), 3);
+      setZoomLevel(newZoom);
+      initialDistance.current = currentDistance;
+
+      // 줌 중심점 계산
+      const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      
+      if (zoomImageRef.current) {
+        const rect = zoomImageRef.current.getBoundingClientRect();
+        setZoomPosition({
+          x: (centerX - rect.left - rect.width / 2) * (1 - newZoom),
+          y: (centerY - rect.top - rect.height / 2) * (1 - newZoom)
+        });
+      }
+    }
+  };
+
+  const handlePinchEnd = () => {
+    setIsZooming(false);
+    if (zoomLevel < 1.1) {
+      setZoomLevel(1);
+      setZoomPosition({ x: 0, y: 0 });
+    }
+  };
+
+  const resetZoom = () => {
+    setZoomLevel(1);
+    setZoomPosition({ x: 0, y: 0 });
+  };
+
   const getMode = () => {
     if (subject === 'product') {
       return style === 'editorial' ? 'editorial_product' : 'product';
@@ -74,7 +229,6 @@ export default function Studio() {
     }
   };
 
-  // 이미지 업로드 후 생성 버튼으로 스크롤
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'main' | 'sub') => {
     const file = e.target.files?.[0];
     if (file) {
@@ -83,7 +237,6 @@ export default function Studio() {
         const result = reader.result as string;
         if (type === 'main') {
           setMainImage(result);
-          // 모바일에서 이미지 업로드 후 생성 버튼으로 스크롤
           if (isMobile) {
             setTimeout(() => {
               generateButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -154,13 +307,13 @@ export default function Studio() {
 
     setIsGenerating(true);
     setGeneratedImages([]);
+    resetZoom();
 
-    // 생성 시작 시 결과 섹션으로 스크롤 (모바일) - 상단 여백 최적화
     if (isMobile && resultSectionRef.current) {
       setTimeout(() => {
         const element = resultSectionRef.current;
         if (element) {
-          const headerOffset = 100; // 헤더 + 여유 공간
+          const headerOffset = 100;
           const elementPosition = element.getBoundingClientRect().top;
           const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
           window.scrollTo({ top: offsetPosition, behavior: 'smooth' });
@@ -196,9 +349,11 @@ export default function Studio() {
       setSelectedImageIndex(0);
       setBalance(data.remaining_credits);
       
+      // 생성 완료 알림음 재생
+      playNotificationSound();
+      
       toast.success(`이미지 생성 완료! (4장, ${data.credits_used}크레딧 사용)`);
 
-      // 생성 완료 후 결과 섹션으로 스크롤 (모바일) - 상단 여백 최적화
       if (isMobile && resultSectionRef.current) {
         setTimeout(() => {
           const element = resultSectionRef.current;
@@ -266,12 +421,76 @@ export default function Studio() {
     }
   };
 
+  // 공유 기능
+  const handleShare = async (type: 'link' | 'kakao') => {
+    const image = generatedImages[selectedImageIndex];
+    if (!image) return;
+
+    if (type === 'link') {
+      try {
+        // 이미지를 Blob으로 변환해서 클립보드에 복사
+        const response = await fetch(image);
+        const blob = await response.blob();
+        
+        if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+          await navigator.clipboard.write([
+            new ClipboardItem({ [blob.type]: blob })
+          ]);
+          toast.success('이미지가 클립보드에 복사되었습니다!');
+        } else {
+          // 폴백: 링크 공유
+          const shareData = {
+            title: 'AUTOPIC으로 생성한 이미지',
+            text: 'AI로 생성한 상품 이미지를 확인해보세요!',
+            url: window.location.href
+          };
+          
+          if (navigator.share) {
+            await navigator.share(shareData);
+          } else {
+            await navigator.clipboard.writeText(window.location.href);
+            toast.success('링크가 복사되었습니다!');
+          }
+        }
+      } catch (e) {
+        // 최후의 폴백
+        try {
+          await navigator.clipboard.writeText(window.location.href);
+          toast.success('링크가 복사되었습니다!');
+        } catch {
+          toast.error('공유 기능을 사용할 수 없습니다');
+        }
+      }
+    } else if (type === 'kakao') {
+      // 카카오톡 공유 (Web Share API 사용)
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: 'AUTOPIC - AI 상품 이미지',
+            text: 'AI로 생성한 고품질 상품 이미지를 확인해보세요!',
+            url: window.location.href
+          });
+        } catch (e) {
+          if ((e as Error).name !== 'AbortError') {
+            toast.error('공유에 실패했습니다');
+          }
+        }
+      } else {
+        toast.error('이 브라우저에서는 공유 기능을 지원하지 않습니다');
+      }
+    }
+    
+    setShowShareMenu(false);
+  };
+
   const goToPrevImage = () => {
     setSelectedImageIndex((prev) => (prev === 0 ? generatedImages.length - 1 : prev - 1));
+    resetZoom();
   };
 
   const goToNextImage = () => {
     setSelectedImageIndex((prev) => (prev === generatedImages.length - 1 ? 0 : prev + 1));
+    resetZoom();
   };
 
   useEffect(() => {
@@ -291,7 +510,24 @@ export default function Studio() {
 
   return (
     <>
-      <section id="studio" className="py-12 md:py-16 bg-white px-4 md:px-6">
+      <section ref={studioRef} id="studio" className="py-12 md:py-16 bg-white px-4 md:px-6 relative">
+        {/* Pull to Refresh 인디케이터 */}
+        {isMobile && isAuthenticated && (
+          <div 
+            className={`absolute top-0 left-1/2 -translate-x-1/2 transition-all duration-200 ${
+              pullDistance > 0 ? 'opacity-100' : 'opacity-0'
+            }`}
+            style={{ transform: `translateX(-50%) translateY(${Math.min(pullDistance / 2, 40)}px)` }}
+          >
+            <div className={`flex items-center gap-2 bg-[#87D039] text-black px-4 py-2 rounded-full text-xs font-bold ${
+              isRefreshing ? 'animate-pulse' : ''
+            }`}>
+              <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
+              {isRefreshing ? '갱신 중...' : pullDistance > 80 ? '놓으면 새로고침' : '당겨서 새로고침'}
+            </div>
+          </div>
+        )}
+
         <div className="max-w-[1400px] mx-auto">
           <div className="text-center mb-6 md:mb-8">
             <span className="inline-block px-3 py-1 rounded-full border border-zinc-200 text-[10px] font-bold uppercase tracking-widest bg-zinc-50 mb-2 md:mb-3 text-zinc-500">
@@ -482,7 +718,6 @@ export default function Studio() {
                     </div>
                   )}
 
-                  {/* 생성 버튼 - ref 추가 */}
                   <div ref={generateButtonRef}>
                     <button 
                       onClick={handleGenerate}
@@ -502,12 +737,50 @@ export default function Studio() {
                 </div>
               </div>
 
-              {/* Right: Preview - ref 추가 */}
+              {/* Right: Preview */}
               <div ref={resultSectionRef} className="p-4 md:p-6 lg:p-7 bg-white flex flex-col">
                 <div className="flex items-center justify-between mb-3 md:mb-4">
                   <h3 className="text-sm md:text-base font-bold text-zinc-900">생성 결과</h3>
                   {generatedImages.length > 0 && (
-                    <>
+                    <div className="flex items-center gap-2">
+                      {/* 공유 버튼 */}
+                      <div className="relative">
+                        <button 
+                          onClick={() => setShowShareMenu(!showShareMenu)}
+                          className="flex items-center gap-1.5 text-xs font-medium text-zinc-600 bg-zinc-100 px-3 py-1.5 rounded-full hover:bg-zinc-200 transition-colors"
+                        >
+                          <Share2 size={12} />
+                          공유
+                        </button>
+                        
+                        {/* 공유 메뉴 드롭다운 */}
+                        {showShareMenu && (
+                          <>
+                            <div 
+                              className="fixed inset-0 z-10" 
+                              onClick={() => setShowShareMenu(false)}
+                            />
+                            <div className="absolute right-0 top-full mt-2 bg-white rounded-xl shadow-lg border border-zinc-200 py-2 z-20 min-w-[140px]">
+                              <button
+                                onClick={() => handleShare('link')}
+                                className="flex items-center gap-3 w-full px-4 py-2.5 text-sm hover:bg-zinc-50 transition"
+                              >
+                                <Link2 size={16} className="text-zinc-500" />
+                                이미지 복사
+                              </button>
+                              <button
+                                onClick={() => handleShare('kakao')}
+                                className="flex items-center gap-3 w-full px-4 py-2.5 text-sm hover:bg-zinc-50 transition"
+                              >
+                                <Share2 size={16} className="text-zinc-500" />
+                                공유하기
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      {/* 다운로드 버튼 */}
                       <button 
                         onClick={() => handleDownload()}
                         className="flex md:hidden items-center gap-1.5 text-xs font-medium text-black bg-[#87D039] px-3 py-1.5 rounded-full hover:bg-[#9AE045] transition-colors"
@@ -523,7 +796,7 @@ export default function Studio() {
                         {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Package size={14} />}
                         {isDownloading ? '압축 중...' : '전체 다운로드'}
                       </button>
-                    </>
+                    </div>
                   )}
                 </div>
 
@@ -539,27 +812,64 @@ export default function Studio() {
                     </div>
                   ) : generatedImages.length > 0 ? (
                     <>
+                      {/* 메인 이미지 - 핀치 줌 지원 */}
                       <div 
+                        ref={zoomImageRef}
                         className={`relative flex-1 flex items-center justify-center mb-3 md:mb-4 bg-zinc-50 rounded-xl md:rounded-2xl p-3 md:p-4 min-h-[200px] md:min-h-[280px] overflow-hidden ${!isMobile ? 'cursor-pointer' : ''}`}
                         onMouseEnter={() => !isMobile && setIsHovered(true)}
                         onMouseLeave={() => !isMobile && setIsHovered(false)}
                         onClick={handleImageClick}
                         onTouchStart={(e) => {
                           if (isMobile) {
-                            (e.currentTarget as any).touchStartX = e.touches[0].clientX;
+                            if (e.touches.length === 2) {
+                              handlePinchStart(e);
+                            } else if (e.touches.length === 1 && zoomLevel === 1) {
+                              (e.currentTarget as any).touchStartX = e.touches[0].clientX;
+                            }
+                          }
+                        }}
+                        onTouchMove={(e) => {
+                          if (isMobile && e.touches.length === 2) {
+                            handlePinchMove(e);
                           }
                         }}
                         onTouchEnd={(e) => {
                           if (isMobile) {
-                            const diff = (e.currentTarget as any).touchStartX - e.changedTouches[0].clientX;
-                            if (Math.abs(diff) > 50) {
-                              if (diff > 0) goToNextImage();
-                              else goToPrevImage();
+                            if (isZooming) {
+                              handlePinchEnd();
+                            } else if (zoomLevel === 1) {
+                              const diff = (e.currentTarget as any).touchStartX - e.changedTouches[0].clientX;
+                              if (Math.abs(diff) > 50) {
+                                if (diff > 0) goToNextImage();
+                                else goToPrevImage();
+                              }
                             }
                           }
                         }}
                       >
-                        {generatedImages.length > 1 && (
+                        {/* 줌 컨트롤 (모바일) */}
+                        {isMobile && generatedImages.length > 0 && (
+                          <div className="absolute top-2 right-2 flex gap-1 z-20">
+                            {zoomLevel > 1 && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); resetZoom(); }}
+                                className="bg-black/50 text-white p-1.5 rounded-full"
+                              >
+                                <ZoomOut size={16} />
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {/* 줌 힌트 */}
+                        {isMobile && zoomLevel === 1 && generatedImages.length > 0 && (
+                          <div className="absolute top-2 left-2 bg-black/50 text-white text-[10px] px-2 py-1 rounded-full z-10 flex items-center gap-1">
+                            <ZoomIn size={10} />
+                            두 손가락으로 확대
+                          </div>
+                        )}
+
+                        {generatedImages.length > 1 && zoomLevel === 1 && (
                           <>
                             <button 
                               className={`absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 p-2 rounded-full transition z-10 ${isHovered ? 'opacity-100' : 'md:opacity-0 opacity-70'}`}
@@ -576,7 +886,7 @@ export default function Studio() {
                           </>
                         )}
                         
-                        {generatedImages.length > 1 && (
+                        {generatedImages.length > 1 && zoomLevel === 1 && (
                           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
                             {generatedImages.map((_, idx) => (
                               <button
@@ -591,7 +901,11 @@ export default function Studio() {
                         <img 
                           src={generatedImages[selectedImageIndex]} 
                           alt={`Generated ${selectedImageIndex + 1}`} 
-                          className={`max-w-full max-h-[250px] md:max-h-[320px] rounded-lg md:rounded-xl shadow-lg object-contain transition-transform duration-300 ${isHovered && !isMobile ? 'scale-105' : 'scale-100'}`}
+                          className="max-w-full max-h-[250px] md:max-h-[320px] rounded-lg md:rounded-xl shadow-lg object-contain transition-transform duration-200"
+                          style={{
+                            transform: `scale(${zoomLevel}) translate(${zoomPosition.x / zoomLevel}px, ${zoomPosition.y / zoomLevel}px)`,
+                          }}
+                          draggable={false}
                         />
 
                         {isHovered && !isMobile && (
@@ -605,7 +919,7 @@ export default function Studio() {
                         {generatedImages.map((img, index) => (
                           <div 
                             key={index}
-                            onClick={() => setSelectedImageIndex(index)}
+                            onClick={() => { setSelectedImageIndex(index); resetZoom(); }}
                             className={`relative aspect-square rounded-lg md:rounded-xl overflow-hidden cursor-pointer transition-all ${selectedImageIndex === index ? 'ring-2 md:ring-3 ring-[#87D039] shadow-lg' : 'ring-1 ring-zinc-200 hover:ring-zinc-400'}`}
                           >
                             <img src={img} alt={`Thumbnail ${index + 1}`} className="w-full h-full object-cover" />
@@ -676,13 +990,22 @@ export default function Studio() {
               ))}
             </div>
             
-            <button
-              onClick={() => handleDownload(selectedImageIndex)}
-              className="mt-4 flex items-center gap-2 bg-[#87D039] text-black px-6 py-2.5 rounded-full font-bold text-sm hover:bg-[#9AE045] transition"
-            >
-              <Download size={16} />
-              다운로드
-            </button>
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => handleShare('link')}
+                className="flex items-center gap-2 bg-zinc-700 text-white px-5 py-2.5 rounded-full font-medium text-sm hover:bg-zinc-600 transition"
+              >
+                <Share2 size={16} />
+                공유
+              </button>
+              <button
+                onClick={() => handleDownload(selectedImageIndex)}
+                className="flex items-center gap-2 bg-[#87D039] text-black px-6 py-2.5 rounded-full font-bold text-sm hover:bg-[#9AE045] transition"
+              >
+                <Download size={16} />
+                다운로드
+              </button>
+            </div>
           </div>
 
           <button 
