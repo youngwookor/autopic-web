@@ -27,23 +27,25 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
               name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
             });
 
-            // 프로필은 별도로 로드 (실패해도 진행)
-            supabase
-              .from('profiles')
-              .select('name, credits')
-              .eq('id', session.user.id)
-              .single()
-              .then(({ data: profile }) => {
-                if (profile) {
-                  setUser({
-                    id: session.user.id,
-                    email: session.user.email || '',
-                    name: profile.name || session.user.email?.split('@')[0] || '',
-                  });
-                  setBalance(profile.credits || 0);
-                }
-              })
-              .catch(console.error);
+            // 프로필 로드
+            try {
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('name, credits')
+                .eq('id', session.user.id)
+                .single();
+
+              if (profile) {
+                setUser({
+                  id: session.user.id,
+                  email: session.user.email || '',
+                  name: profile.name || session.user.email?.split('@')[0] || '',
+                });
+                setBalance(profile.credits || 0);
+              }
+            } catch (profileError) {
+              console.error('Profile load error:', profileError);
+            }
 
           } else {
             logout();
@@ -53,7 +55,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           console.error('Auth error:', error);
         }
 
-        // 무조건 Auth 준비 완료 (에러 나도 진행)
+        // 무조건 Auth 준비 완료
         console.log('Auth ready!');
         setIsAuthReady(true);
       }
