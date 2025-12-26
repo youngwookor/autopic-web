@@ -421,62 +421,71 @@ export default function Studio() {
     }
   };
 
+  // base64를 Blob으로 변환하는 헬퍼 함수
+  const base64ToBlob = (base64: string, mimeType: string = 'image/jpeg'): Blob => {
+    const base64Data = base64.split(',')[1];
+    const byteCharacters = atob(base64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
+  };
+
   // 공유 기능
   const handleShare = async (type: 'link' | 'kakao') => {
     const image = generatedImages[selectedImageIndex];
     if (!image) return;
 
     if (type === 'link') {
+      // 이미지 복사하기
       try {
-        // 이미지를 Blob으로 변환해서 클립보드에 복사
-        const response = await fetch(image);
-        const blob = await response.blob();
+        const blob = base64ToBlob(image, 'image/png');
         
         if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+          // PNG로 복사 (호환성을 위해)
+          const pngBlob = new Blob([blob], { type: 'image/png' });
           await navigator.clipboard.write([
-            new ClipboardItem({ [blob.type]: blob })
+            new ClipboardItem({ 'image/png': pngBlob })
           ]);
           toast.success('이미지가 클립보드에 복사되었습니다!');
         } else {
-          // 폴백: 링크 공유
-          const shareData = {
-            title: 'AUTOPIC으로 생성한 이미지',
-            text: 'AI로 생성한 상품 이미지를 확인해보세요!',
-            url: window.location.href
-          };
-          
-          if (navigator.share) {
-            await navigator.share(shareData);
-          } else {
-            await navigator.clipboard.writeText(window.location.href);
-            toast.success('링크가 복사되었습니다!');
-          }
+          // 클립보드 API 미지원 시 다운로드로 안내
+          toast.error('이 브라우저에서는 이미지 복사를 지원하지 않습니다. 다운로드를 이용해주세요.');
         }
       } catch (e) {
-        // 최후의 폴백
-        try {
-          await navigator.clipboard.writeText(window.location.href);
-          toast.success('링크가 복사되었습니다!');
-        } catch {
-          toast.error('공유 기능을 사용할 수 없습니다');
-        }
+        console.error('Image copy error:', e);
+        toast.error('이미지 복사에 실패했습니다. 다운로드를 이용해주세요.');
       }
     } else if (type === 'kakao') {
-      // 카카오톡 공유 (Web Share API 사용)
-      if (navigator.share) {
-        try {
+      // 이미지 공유하기 (Web Share API)
+      try {
+        const blob = base64ToBlob(image, 'image/jpeg');
+        const file = new File([blob], `autopic_image_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        
+        // 파일 공유 지원 여부 확인
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
           await navigator.share({
             title: 'AUTOPIC - AI 상품 이미지',
             text: 'AI로 생성한 고품질 상품 이미지를 확인해보세요!',
-            url: window.location.href
+            files: [file]
           });
-        } catch (e) {
-          if ((e as Error).name !== 'AbortError') {
-            toast.error('공유에 실패했습니다');
-          }
+        } else if (navigator.share) {
+          // 파일 공유 미지원 시 URL만 공유
+          await navigator.share({
+            title: 'AUTOPIC - AI 상품 이미지',
+            text: 'AI로 생성한 고품질 상품 이미지를 확인해보세요!',
+            url: window.location.origin
+          });
+        } else {
+          toast.error('이 브라우저에서는 공유 기능을 지원하지 않습니다');
         }
-      } else {
-        toast.error('이 브라우저에서는 공유 기능을 지원하지 않습니다');
+      } catch (e) {
+        if ((e as Error).name !== 'AbortError') {
+          console.error('Share error:', e);
+          toast.error('공유에 실패했습니다');
+        }
       }
     }
     

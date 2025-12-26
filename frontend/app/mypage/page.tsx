@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase, signOut } from '@/lib/supabase';
@@ -49,94 +49,136 @@ export default function MyPage() {
   const [usages, setUsages] = useState<Usage[]>([]);
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [profile, setProfile] = useState<any>(null);
-  const [pageReady, setPageReady] = useState(false);
-  const initRef = useRef(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+  // 데이터 로드 함수
+  const loadData = async (userId: string) => {
+    try {
+      // 프로필 로드
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      
+      if (profileError) throw profileError;
+      
+      if (profileData) {
+        setProfile(profileData);
+        setBalance(profileData.credits || 0);
+      }
+
+      // 생성 내역 로드
+      const { data: generationsData } = await supabase
+        .from('generations')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      setGenerations(generationsData || []);
+
+      // 사용 내역 로드
+      const { data: usagesData } = await supabase
+        .from('usages')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      setUsages(usagesData || []);
+
+      // API 키 로드 (에러 무시)
+      try {
+        const keysResponse = await fetch(`${API_URL}/api/keys/${userId}`);
+        if (keysResponse.ok) {
+          const keysData = await keysResponse.json();
+          setApiKeys(keysData.keys || []);
+        }
+      } catch (e) {
+        console.log('API keys load skipped');
+      }
+    } catch (error) {
+      console.error('Data load error:', error);
+    }
+  };
+
   useEffect(() => {
-    // 이미 초기화됐으면 스킵
-    if (initRef.current) return;
-    initRef.current = true;
+    let isMounted = true;
 
     const init = async () => {
       try {
         // Supabase 세션 직접 확인
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session }, error } = await supabase.auth.getSession();
         
-        if (!session?.user) {
-          router.replace('/login');
+        if (error || !session?.user) {
+          if (isMounted) {
+            router.replace('/login');
+          }
           return;
         }
 
         const userId = session.user.id;
 
-        // 프로필 로드
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .single();
-        
-        if (profileData) {
-          setProfile(profileData);
-          setBalance(profileData.credits || 0);
+        // Store 업데이트
+        if (isMounted) {
           setUser({
             id: userId,
             email: session.user.email || '',
-            name: profileData.name || '',
+            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
           });
         }
 
-        // 생성 내역 로드
-        const { data: generationsData } = await supabase
-          .from('generations')
-          .select('*')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(100);
-        setGenerations(generationsData || []);
+        // 데이터 로드
+        await loadData(userId);
 
-        // 사용 내역 로드
-        const { data: usagesData } = await supabase
-          .from('usages')
-          .select('*')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(50);
-        setUsages(usagesData || []);
-
-        // API 키 로드 (에러 무시)
-        try {
-          const keysResponse = await fetch(`${API_URL}/api/keys/${userId}`);
-          if (keysResponse.ok) {
-            const keysData = await keysResponse.json();
-            setApiKeys(keysData.keys || []);
-          }
-        } catch (e) {}
-
-        setPageReady(true);
       } catch (error) {
         console.error('Init error:', error);
-        setPageReady(true);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
     init();
 
-    // 3초 안전장치
-    const timeout = setTimeout(() => setPageReady(true), 3000);
-    return () => clearTimeout(timeout);
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleLogout = async () => {
+    if (isLoggingOut) return;
+    
+    setIsLoggingOut(true);
+    
     try {
-      await signOut();
-    } catch (e) {}
-    storeLogout();
-    setBalance(0);
-    toast.success('로그아웃 되었습니다');
-    router.replace('/');
+      // Supabase 로그아웃
+      await supabase.auth.signOut();
+      
+      // Store 초기화
+      storeLogout();
+      setBalance(0);
+      
+      // 로컬 스토리지 클리어
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('autopic-auth');
+        localStorage.removeItem('auth-storage');
+        localStorage.removeItem('credits-storage');
+        sessionStorage.clear();
+      }
+      
+      toast.success('로그아웃 되었습니다');
+      
+      // 홈으로 이동
+      window.location.href = '/';
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast.error('로그아웃 중 오류가 발생했습니다');
+      setIsLoggingOut(false);
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -164,7 +206,7 @@ export default function MyPage() {
   };
 
   // 로딩 중
-  if (!pageReady) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
         <div className="text-center">
@@ -209,10 +251,15 @@ export default function MyPage() {
           </div>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-2 text-zinc-500 hover:text-red-500 transition text-sm"
+            disabled={isLoggingOut}
+            className="flex items-center gap-2 text-zinc-500 hover:text-red-500 transition text-sm disabled:opacity-50"
           >
-            <LogOut size={18} />
-            <span className="hidden md:inline">로그아웃</span>
+            {isLoggingOut ? (
+              <div className="w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <LogOut size={18} />
+            )}
+            <span className="hidden md:inline">{isLoggingOut ? '로그아웃 중...' : '로그아웃'}</span>
           </button>
         </div>
       </header>
@@ -493,11 +540,16 @@ export default function MyPage() {
               <div className="space-y-4">
                 <button
                   onClick={handleLogout}
-                  className="w-full flex items-center justify-between p-4 bg-zinc-50 rounded-xl hover:bg-zinc-100 transition"
+                  disabled={isLoggingOut}
+                  className="w-full flex items-center justify-between p-4 bg-zinc-50 rounded-xl hover:bg-zinc-100 transition disabled:opacity-50"
                 >
                   <div className="flex items-center gap-3">
-                    <LogOut size={20} className="text-zinc-500" />
-                    <span className="font-medium">로그아웃</span>
+                    {isLoggingOut ? (
+                      <div className="w-5 h-5 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <LogOut size={20} className="text-zinc-500" />
+                    )}
+                    <span className="font-medium">{isLoggingOut ? '로그아웃 중...' : '로그아웃'}</span>
                   </div>
                   <ChevronRight size={20} className="text-zinc-400" />
                 </button>
