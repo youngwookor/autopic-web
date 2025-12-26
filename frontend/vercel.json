@@ -4,5 +4,16 @@
       "source": "/backend/:path*",
       "destination": "http://43.200.229.169:8000/:path*"
     }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
+        }
+      ]
+    }
   ]
 }

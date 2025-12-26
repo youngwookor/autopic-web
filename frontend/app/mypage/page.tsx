@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
@@ -51,7 +51,9 @@ export default function MyPage() {
   const [profile, setProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [authChecked, setAuthChecked] = useState(false);
+  
+  // 초기화 완료 여부 추적
+  const initializedRef = useRef(false);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -98,95 +100,69 @@ export default function MyPage() {
   }, [API_URL, setBalance]);
 
   useEffect(() => {
+    // 이미 초기화됐으면 스킵
+    if (initializedRef.current) return;
+    
     let isMounted = true;
-    let timeoutId: NodeJS.Timeout;
 
-    // 세션 확인 및 처리
-    const handleSession = async (session: any) => {
-      if (!isMounted) return;
-
-      if (session?.user) {
-        const userId = session.user.id;
-        
-        setUser({
-          id: userId,
-          email: session.user.email || '',
-          name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
-        });
-        
-        await loadData(userId);
-        
-        if (isMounted) {
-          setIsLoading(false);
-          setAuthChecked(true);
-        }
-      } else {
-        // 세션 없음 - 로그인 페이지로
-        if (isMounted) {
-          setAuthChecked(true);
-          router.replace('/login');
-        }
-      }
-    };
-
-    // onAuthStateChange로 세션 이벤트 감지 (가장 안정적인 방법)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('MyPage auth event:', event);
-        
-        if (!isMounted) return;
-
-        if (event === 'SIGNED_OUT') {
-          router.replace('/login');
-          return;
-        }
-
-        // INITIAL_SESSION, SIGNED_IN, TOKEN_REFRESHED 등의 이벤트에서 세션 처리
-        if (session?.user && !authChecked) {
-          await handleSession(session);
-        }
-      }
-    );
-
-    // 초기 세션 확인 (onAuthStateChange가 즉시 발생하지 않는 경우 대비)
-    const checkInitialSession = async () => {
-      // 잠시 대기 (Supabase 내부 초기화 시간)
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      if (!isMounted || authChecked) return;
-
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session?.user) {
-        await handleSession(session);
-      } else {
-        // 세션이 없으면 조금 더 기다렸다가 다시 확인
-        timeoutId = setTimeout(async () => {
-          if (!isMounted || authChecked) return;
+    const handleAuth = async () => {
+      // onAuthStateChange는 INITIAL_SESSION 이벤트를 발생시킴
+      // 이 이벤트는 Supabase가 localStorage에서 세션을 복원한 후 발생
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        async (event, session) => {
+          console.log('Auth event:', event, 'Session:', !!session);
           
-          const { data: { session: retrySession } } = await supabase.auth.getSession();
+          if (!isMounted) return;
           
-          if (retrySession?.user) {
-            await handleSession(retrySession);
-          } else {
-            // 최종적으로 세션 없음 확인
+          // INITIAL_SESSION: 페이지 로드 시 세션 상태 확정
+          // SIGNED_IN: 로그인 완료
+          // TOKEN_REFRESHED: 토큰 갱신
+          if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+            if (session?.user) {
+              // 세션 있음 - 데이터 로드
+              const userId = session.user.id;
+              
+              setUser({
+                id: userId,
+                email: session.user.email || '',
+                name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
+              });
+              
+              await loadData(userId);
+              
+              if (isMounted) {
+                initializedRef.current = true;
+                setIsLoading(false);
+              }
+            } else if (event === 'INITIAL_SESSION') {
+              // INITIAL_SESSION인데 세션 없음 = 로그인 안 됨
+              console.log('No session on INITIAL_SESSION, redirecting to login');
+              if (isMounted) {
+                router.replace('/login');
+              }
+            }
+          } else if (event === 'SIGNED_OUT') {
+            // 로그아웃
             if (isMounted) {
-              setAuthChecked(true);
               router.replace('/login');
             }
           }
-        }, 1000); // 1초 더 대기 후 재확인
-      }
+        }
+      );
+
+      // cleanup
+      return () => {
+        subscription.unsubscribe();
+      };
     };
 
-    checkInitialSession();
+    const unsubscribePromise = handleAuth();
 
     return () => {
       isMounted = false;
-      if (timeoutId) clearTimeout(timeoutId);
-      subscription.unsubscribe();
+      unsubscribePromise.then(unsubscribe => unsubscribe?.());
     };
-  }, [router, setUser, loadData, authChecked]);
+  }, [router, setUser, loadData]);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
