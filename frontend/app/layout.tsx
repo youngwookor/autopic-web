@@ -101,9 +101,9 @@ export const metadata: Metadata = {
   // 검색엔진 인증
   verification: {
     google: '3U3dm8-xCE4YimUny6Z6TiHuWzLrIBxvPLPJfvVJCWw', // Google Search Console
-    // other: {
-    //   'naver-site-verification': '', // 네이버 웹마스터 인증 코드
-    // },
+    other: {
+      'naver-site-verification': 'df63440260208b39e4221ed10d0ba64dba4c2c8c', // 네이버 서치어드바이저
+    },
   },
 };
 
