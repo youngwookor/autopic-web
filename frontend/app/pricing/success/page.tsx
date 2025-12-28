@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useAnalytics } from '@/hooks/useAnalytics';
 import { useAuthStore, useCreditsStore } from '@/lib/store';
 import { CheckCircle, Loader2, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -14,9 +15,11 @@ function SuccessContent() {
   const searchParams = useSearchParams();
   const { user } = useAuthStore();
   const { setBalance } = useCreditsStore();
+  const { trackPurchase } = useAnalytics();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [credits, setCredits] = useState(0);
   const [totalCredits, setTotalCredits] = useState(0);
+  const purchaseTracked = useRef(false);
 
   useEffect(() => {
     const confirmPayment = async () => {
@@ -48,6 +51,18 @@ function SuccessContent() {
           setTotalCredits(data.total_credits);
           setBalance(data.total_credits);
           setStatus('success');
+          
+          // Analytics: 구매 완료 추적 (중복 방지)
+          if (!purchaseTracked.current) {
+            trackPurchase({
+              transactionId: orderId,
+              value: parseInt(amount),
+              credits: data.credits,
+              planName: searchParams.get('plan') || undefined,
+            });
+            purchaseTracked.current = true;
+          }
+          
           toast.success('결제가 완료되었습니다!');
         } else {
           throw new Error(data.error || '결제 확인 실패');

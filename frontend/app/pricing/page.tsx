@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useAnalytics } from '@/hooks/useAnalytics';
 import { useAuthStore, useCreditsStore } from '@/lib/store';
 import { ArrowLeft, Check, Zap, Crown, Shield, Clock, Download, ChevronLeft, ChevronRight, Globe, Monitor } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -46,6 +47,12 @@ function PricingPageContent() {
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
   const sliderRef = useRef<HTMLDivElement>(null);
+  const { trackViewPricing, trackInitiateCheckout } = useAnalytics();
+
+  // Analytics: 가격 페이지 조회 추적
+  useEffect(() => {
+    trackViewPricing();
+  }, []);
 
   useEffect(() => {
     const plan = searchParams.get('plan');
@@ -81,6 +88,13 @@ function PricingPageContent() {
 
     setIsLoading(true);
     setSelectedPlan(planId);
+
+    // Analytics: 결제 시작 추적
+    trackInitiateCheckout({
+      value: plan.price,
+      credits: plan.credits,
+      planName: plan.name,
+    });
 
     try {
       const orderId = `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

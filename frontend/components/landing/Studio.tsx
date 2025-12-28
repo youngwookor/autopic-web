@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { useAnalytics } from '@/hooks/useAnalytics';
 import { useAuthStore, useCreditsStore } from '@/lib/store';
 import { 
   Upload, 
@@ -62,6 +63,7 @@ const playNotificationSound = () => {
 
 export default function Studio() {
   const router = useRouter();
+  const { trackImageGenerate } = useAnalytics();
   const { user, isAuthenticated } = useAuthStore();
   const { balance, setBalance } = useCreditsStore();
   
@@ -351,6 +353,13 @@ export default function Studio() {
       
       // 생성 완료 알림음 재생
       playNotificationSound();
+      
+      // Analytics: 이미지 생성 추적
+      trackImageGenerate({
+        productType: target,
+        imageType: subject === 'product' ? '정물' : '인물',
+        creditsUsed: data.credits_used,
+      });
       
       toast.success(`이미지 생성 완료! (4장, ${data.credits_used}크레딧 사용)`);
 

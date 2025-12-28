@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useAnalytics } from '@/hooks/useAnalytics';
 import { signIn, signInWithGoogle, signInWithKakao, supabase, getProfile } from '@/lib/supabase';
 import { useAuthStore, useCreditsStore } from '@/lib/store';
 import { Loader2 } from 'lucide-react';
@@ -27,6 +28,7 @@ const KakaoIcon = () => (
 
 export default function LoginPage() {
   const router = useRouter();
+  const { trackLogin } = useAnalytics();
   const { setUser } = useAuthStore();
   const { updateBalance } = useCreditsStore();
   const [email, setEmail] = useState('');
@@ -54,6 +56,9 @@ export default function LoginPage() {
         });
         updateBalance(profile.credits);
         
+        // Analytics: 로그인 추적
+        trackLogin('email');
+        
         // 환영 메시지는 AuthProvider에서 처리
         router.push('/');
       }
@@ -67,6 +72,7 @@ export default function LoginPage() {
   const handleGoogleLogin = async () => {
     setIsGoogleLoading(true);
     try {
+      trackLogin('google');
       await signInWithGoogle();
     } catch (error: any) {
       toast.error(error.message || 'Google 로그인 실패');
@@ -77,6 +83,7 @@ export default function LoginPage() {
   const handleKakaoLogin = async () => {
     setIsKakaoLoading(true);
     try {
+      trackLogin('kakao');
       await signInWithKakao();
     } catch (error: any) {
       toast.error(error.message || '카카오 로그인 실패');

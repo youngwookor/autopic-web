@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useAnalytics } from '@/hooks/useAnalytics';
 import { signUp, signInWithGoogle, signInWithKakao } from '@/lib/supabase';
 import { Loader2, X, Check, ChevronRight, Phone, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -101,6 +102,7 @@ const PRIVACY_POLICY = `
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { trackSignUp } = useAnalytics();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -249,6 +251,8 @@ export default function RegisterPage() {
 
     try {
       await signUp(email, password, name);
+      // Analytics: 회원가입 추적
+      trackSignUp('email');
       toast.success('회원가입 완료! 이메일을 확인해주세요.');
       router.push('/login');
     } catch (error: any) {
@@ -271,6 +275,8 @@ export default function RegisterPage() {
 
     setIsGoogleLoading(true);
     try {
+      // Analytics: Google 회원가입 추적
+      trackSignUp('google');
       await signInWithGoogle();
     } catch (error: any) {
       toast.error(error.message || 'Google 로그인 실패');
@@ -291,6 +297,8 @@ export default function RegisterPage() {
 
     setIsKakaoLoading(true);
     try {
+      // Analytics: Kakao 회원가입 추적
+      trackSignUp('kakao');
       await signInWithKakao();
     } catch (error: any) {
       toast.error(error.message || '카카오 로그인 실패');
