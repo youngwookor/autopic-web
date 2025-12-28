@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "app.autopic.twa",
+        "sha256_cert_fingerprints": ["D7:96:88:B3:D3:C9:3C:EE:04:70:AD:1A:11:4C:AB:8E:56:67:6C:85:AE:59:90:DD:F2:6D:F2:E0:85:75:2E:D8"]
+      }
+    }]
