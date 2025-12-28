@@ -70,7 +70,7 @@ export default function Studio() {
   const [subject, setSubject] = useState<'product' | 'model'>('product');
   const [style, setStyle] = useState<'basic' | 'editorial'>('basic');
   const [modelType, setModelType] = useState<'standard' | 'premium'>('premium');
-  const [target, setTarget] = useState<'general' | 'kids' | 'pet'>('general');
+  const [target, setTarget] = useState<'fashion' | 'kids' | 'pet' | 'food'>('fashion');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState<number>(0);
@@ -333,8 +333,8 @@ export default function Studio() {
           mode: mode,
           model_type: modelType,
           gender: 'auto',
-          category: target === 'kids' ? '키즈' : target === 'pet' ? '펫용품' : 'auto',
-          target: target === 'kids' ? '아동' : target === 'pet' ? '반려동물' : '사람',
+          category: target === 'kids' ? '키즈' : target === 'pet' ? '펫용품' : target === 'food' ? '식품' : 'auto',
+          target: target === 'kids' ? '아동' : target === 'pet' ? '반려동물' : target === 'food' ? '식품' : '사람',
         }),
       });
 
@@ -699,34 +699,45 @@ export default function Studio() {
                     </p>
                   </div>
 
-                  {subject === 'model' && (
-                    <div>
-                      <label className="text-xs md:text-sm font-medium text-zinc-600 mb-1.5 md:mb-2 block">상품 타입</label>
-                      <div className="grid grid-cols-3 gap-2 md:gap-3">
-                        <button 
-                          onClick={() => setTarget('general')} 
-                          className={`py-2 md:py-2.5 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all border flex flex-col items-center gap-1 ${target === 'general' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}
-                        >
-                          <span className="text-base">👤</span>
-                          <span>일반</span>
-                        </button>
-                        <button 
-                          onClick={() => setTarget('kids')} 
-                          className={`py-2 md:py-2.5 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all border flex flex-col items-center gap-1 ${target === 'kids' ? 'bg-pink-500 text-white border-pink-500' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}
-                        >
-                          <span className="text-base">🧒</span>
-                          <span>키즈</span>
-                        </button>
-                        <button 
-                          onClick={() => setTarget('pet')} 
-                          className={`py-2 md:py-2.5 rounded-lg md:rounded-xl font-medium text-xs md:text-sm transition-all border flex flex-col items-center gap-1 ${target === 'pet' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}
-                        >
-                          <span className="text-base">🐕</span>
-                          <span>펫</span>
-                        </button>
-                      </div>
+                  <div>
+                    <label className="text-xs md:text-sm font-medium text-zinc-600 mb-1.5 md:mb-2 block">상품 타입</label>
+                    <div className="grid grid-cols-4 gap-1.5 md:gap-2">
+                      <button 
+                        onClick={() => setTarget('fashion')} 
+                        className={`py-2 md:py-2.5 rounded-lg md:rounded-xl font-medium text-xs transition-all border flex flex-col items-center gap-0.5 ${target === 'fashion' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}
+                      >
+                        <span className="text-sm md:text-base">👗</span>
+                        <span>패션</span>
+                      </button>
+                      <button 
+                        onClick={() => setTarget('kids')} 
+                        className={`py-2 md:py-2.5 rounded-lg md:rounded-xl font-medium text-xs transition-all border flex flex-col items-center gap-0.5 ${target === 'kids' ? 'bg-pink-500 text-white border-pink-500' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}
+                      >
+                        <span className="text-sm md:text-base">👶</span>
+                        <span>키즈</span>
+                      </button>
+                      <button 
+                        onClick={() => setTarget('pet')} 
+                        className={`py-2 md:py-2.5 rounded-lg md:rounded-xl font-medium text-xs transition-all border flex flex-col items-center gap-0.5 ${target === 'pet' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}
+                      >
+                        <span className="text-sm md:text-base">🐕</span>
+                        <span>펫</span>
+                      </button>
+                      <button 
+                        onClick={() => setTarget('food')} 
+                        className={`py-2 md:py-2.5 rounded-lg md:rounded-xl font-medium text-xs transition-all border flex flex-col items-center gap-0.5 ${target === 'food' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}
+                      >
+                        <span className="text-sm md:text-base">🍔</span>
+                        <span>식품</span>
+                      </button>
                     </div>
-                  )}
+                    {/* 식품 + 인물 조합 경고 */}
+                    {target === 'food' && subject === 'model' && (
+                      <p className="text-[10px] text-orange-600 mt-1.5 bg-orange-50 px-2 py-1 rounded">
+                        ⚠️ 식품은 정물 모드에 최적화되어 있습니다
+                      </p>
+                    )}
+                  </div>
 
                   <div ref={generateButtonRef}>
                     <button 

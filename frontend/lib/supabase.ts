@@ -34,7 +34,17 @@ export async function signIn(email: string, password: string) {
     email,
     password
   });
-  if (error) throw error;
+  if (error) {
+    // Supabase 에러 메시지 한글화
+    const errorMessages: { [key: string]: string } = {
+      'Invalid login credentials': '이메일 또는 비밀번호가 올바르지 않습니다',
+      'Email not confirmed': '이메일 인증이 완료되지 않았습니다',
+      'User not found': '등록되지 않은 사용자입니다',
+      'Too many requests': '로그인 시도가 너무 많습니다. 잠시 후 다시 시도해주세요',
+    };
+    const koreanMessage = errorMessages[error.message] || '로그인에 실패했습니다';
+    throw new Error(koreanMessage);
+  }
   return data;
 }
 
