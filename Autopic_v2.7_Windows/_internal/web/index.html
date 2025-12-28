@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autopic - AI 상품 이미지 생성기</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+        * { font-family: 'Inter', 'Malgun Gothic', sans-serif; box-sizing: border-box; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 3px; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        .animate-spin { animation: spin 1s linear infinite; }
+        .animate-pulse { animation: pulse 1.5s ease-in-out infinite; }
+        .drop-zone { transition: all 0.3s ease; }
+        .drop-zone.dragover { border-color: #a3e635 !important; background-color: #f7fee7 !important; }
+        .tab-btn.active { background: white; color: #18181b; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .image-card { position: relative; transition: all 0.2s ease; overflow: hidden; cursor: pointer; }
+        .image-card:hover { transform: scale(1.02); box-shadow: 0 10px 30px rgba(0,0,0,0.12); }
+        .progress-bar { transition: width 0.3s ease; }
+        .biz-type-btn.active { border-color: #a3e635 !important; background-color: #f7fee7 !important; }
+        .model-btn.active { border-color: #a3e635 !important; background-color: #f7fee7 !important; }
+    </style>
+</head>
+<body class="bg-zinc-100 h-screen flex flex-col overflow-hidden">
+    <header class="bg-white border-b border-zinc-200 px-6 py-3 flex items-center justify-between shrink-0 shadow-sm">
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2">
+                <div class="w-9 h-9 bg-zinc-900 rounded-xl flex items-center justify-center">
+                    <svg viewBox="0 0 24 24" class="w-5 h-5 text-lime-400" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                </div>
+                <span class="text-xl font-black tracking-tight">Autopic</span>
+            </div>
+            <span class="text-[10px] font-bold bg-lime-400 text-zinc-900 px-2.5 py-1 rounded-full">v2.7</span>
+            <span id="businessTypeDisplay" class="text-xs font-bold bg-zinc-100 text-zinc-600 px-3 py-1.5 rounded-full">👜 명품 패션</span>
+        </div>
+        <div class="flex items-center gap-3">
+            <div id="keyNameDisplay" class="hidden flex items-center gap-2 px-3 py-1.5 bg-blue-50 rounded-full">
+                <span class="text-blue-500">👤</span>
+                <span id="keyNameText" class="text-xs font-bold text-blue-700"></span>
+            </div>
+            <div id="apiStatus" class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 rounded-full">
+                <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                <span class="text-xs font-medium text-zinc-500">API 미연결</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="bg-white border-b border-zinc-200 px-6 shrink-0">
+        <div class="flex gap-1 py-2">
+            <button onclick="switchTab('studio')" class="tab-btn active px-5 py-2.5 text-sm font-bold rounded-xl" data-tab="studio">🎨 AI 스튜디오</button>
+            <button onclick="switchTab('batch')" class="tab-btn px-5 py-2.5 text-sm font-bold rounded-xl text-zinc-400" data-tab="batch">📦 일괄 처리</button>
+            <button onclick="switchTab('settings')" class="tab-btn px-5 py-2.5 text-sm font-bold rounded-xl text-zinc-400" data-tab="settings">⚙️ 설정</button>
+            <button onclick="switchTab('logs')" class="tab-btn px-5 py-2.5 text-sm font-bold rounded-xl text-zinc-400" data-tab="logs">📝 로그</button>
+        </div>
+    </div>
+
+    <main class="flex-1 overflow-hidden">
+        <!-- Studio Tab -->
+        <div id="tab-studio" class="tab-content h-full flex">
+            <aside class="w-[420px] bg-white border-r border-zinc-200 flex flex-col shrink-0">
+                <div class="p-5 border-b border-zinc-100 flex items-center justify-between">
+                    <h2 class="text-lg font-bold">AI Studio</h2>
+                </div>
+                <div class="flex-1 overflow-y-auto p-5 space-y-5">
+                    <section>
+                        <label class="text-xs font-black text-zinc-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <span class="w-5 h-5 bg-zinc-900 rounded-md flex items-center justify-center text-white text-[10px]">1</span>사진 업로드
+                        </label>
+                        <div id="dropZone" class="drop-zone border-2 border-dashed border-zinc-300 rounded-2xl p-8 text-center cursor-pointer hover:border-lime-400 bg-zinc-50/50">
+                            <input type="file" id="fileInput" accept="image/*" class="hidden">
+                            <div id="uploadPlaceholder">
+                                <div class="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                                    <svg class="w-7 h-7 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                                </div>
+                                <p class="text-sm font-bold text-zinc-700">이미지를 드래그하거나 클릭</p>
+                                <p class="text-xs text-zinc-400 mt-1">JPG, PNG, WebP 지원</p>
+                            </div>
+                            <div id="previewContainer" class="hidden">
+                                <img id="previewImage" class="max-h-44 mx-auto rounded-xl shadow-lg">
+                                <p id="fileName" class="text-xs text-zinc-500 mt-3 truncate font-medium"></p>
+                            </div>
+                        </div>
+                        <button id="clearImageBtn" onclick="clearImage()" class="hidden w-full mt-2 py-2 text-sm font-medium text-zinc-400 hover:text-red-500 rounded-lg">🗑️ 이미지 삭제</button>
+                    </section>
+                    <section>
+                        <label class="text-xs font-black text-zinc-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <span class="w-5 h-5 bg-zinc-900 rounded-md flex items-center justify-center text-white text-[10px]">2</span>제작 옵션
+                        </label>
+                        <div class="space-y-4 bg-zinc-50/50 rounded-2xl p-4">
+                            <div>
+                                <label class="text-[10px] font-bold text-zinc-500 mb-1.5 block uppercase">이미지 타입</label>
+                                <div class="grid grid-cols-2 gap-1.5 p-1.5 bg-zinc-100 rounded-xl">
+                                    <button onclick="setMode('product')" id="modeProduct" class="py-2.5 text-xs font-bold rounded-lg bg-white shadow-sm">🛍️ 정물</button>
+                                    <button onclick="setMode('model')" id="modeModel" class="py-2.5 text-xs font-bold rounded-lg text-zinc-400">👤 모델</button>
+                                </div>
+                            </div>
+                            <div id="genderSection" class="hidden">
+                                <label class="text-[10px] font-bold text-zinc-500 mb-1.5 block uppercase">모델 성별</label>
+                                <div class="grid grid-cols-2 gap-1.5 p-1.5 bg-zinc-100 rounded-xl">
+                                    <button onclick="setGender('여성')" id="genderFemale" class="py-2.5 text-xs font-bold rounded-lg bg-zinc-900 text-white">👩 여성</button>
+                                    <button onclick="setGender('남성')" id="genderMale" class="py-2.5 text-xs font-bold rounded-lg text-zinc-400">👨 남성</button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+                <div class="p-5 border-t border-zinc-100 bg-zinc-50/30">
+                    <button id="generateBtn" onclick="generateImage()" disabled class="w-full py-4 bg-zinc-900 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-40 hover:bg-lime-400 hover:text-zinc-900 transition-all">
+                        <span id="generateBtnIcon">✨</span><span id="generateBtnText">이미지 생성하기</span>
+                        <span id="generateBtnLoading" class="hidden"><svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg></span>
+                    </button>
+                </div>
+            </aside>
+            <section class="flex-1 bg-zinc-50 flex flex-col">
+                <div class="h-12 border-b border-zinc-200 flex items-center justify-between px-5 bg-white/80">
+                    <span class="text-xs font-black text-zinc-400 uppercase tracking-widest">Canvas View</span>
+                    <span id="canvasInfo" class="text-xs font-medium text-zinc-400"></span>
+                </div>
+                <div id="canvasArea" class="flex-1 flex items-center justify-center p-8 overflow-auto" style="background-image: radial-gradient(#e5e7eb 1px, transparent 1px); background-size: 24px 24px;">
+                    <div id="emptyState" class="text-center animate-fade-in">
+                        <div class="w-24 h-24 bg-zinc-100 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                            <svg viewBox="0 0 24 24" class="w-12 h-12 text-zinc-300" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                        </div>
+                        <p class="text-xl font-black text-zinc-300">사진을 업로드하여</p>
+                        <p class="text-xl font-black text-zinc-300">스튜디오 촬영을 시작하세요</p>
+                    </div>
+                    <div id="loadingState" class="hidden text-center animate-fade-in">
+                        <div class="bg-white p-12 rounded-[32px] shadow-2xl border border-zinc-100">
+                            <div class="w-16 h-16 border-4 border-lime-400 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
+                            <p class="text-xl font-black text-zinc-900 mb-2">이미지 생성 중</p>
+                            <p class="text-sm text-zinc-400">AI가 이미지를 분석하고 있습니다...</p>
+                        </div>
+                    </div>
+                    <div id="resultGrid" class="hidden w-full max-w-4xl grid grid-cols-2 gap-5 animate-fade-in"></div>
+                </div>
+            </section>
+            <aside class="w-[280px] bg-white border-l border-zinc-200 flex flex-col shrink-0">
+                <div class="p-4 border-b border-zinc-100"><h3 class="font-bold text-sm">📜 히스토리</h3></div>
+                <div id="historyList" class="flex-1 overflow-y-auto p-3"><p class="text-sm text-zinc-400 text-center py-8">생성된 이미지가 없습니다</p></div>
+                <div class="p-4 border-t border-zinc-100">
+                    <button id="downloadAllBtn" onclick="downloadAll()" disabled class="w-full py-3 bg-zinc-900 text-white rounded-xl text-sm font-bold hover:bg-lime-400 hover:text-zinc-900 disabled:opacity-40">📥 전체 다운로드</button>
+                </div>
+            </aside>
+        </div>
+
+        <!-- Batch Tab -->
+        <div id="tab-batch" class="tab-content hidden h-full p-6 overflow-auto">
+            <div class="max-w-5xl mx-auto space-y-5">
+                <!-- 사용 가이드 -->
+                <details class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-100 overflow-hidden">
+                    <summary class="p-4 cursor-pointer flex items-center gap-3 font-bold text-blue-800 hover:bg-blue-100/50">
+                        <span class="text-xl">📖</span>
+                        <span>사용 가이드 (클릭하여 펼치기)</span>
+                        <svg class="w-5 h-5 ml-auto transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </summary>
+                    <div class="p-5 pt-2 space-y-4 text-sm">
+                        <div class="bg-white rounded-xl p-4 border border-blue-100">
+                            <h4 class="font-bold text-blue-900 mb-2 flex items-center gap-2">📁 폴더 구조</h4>
+                            <pre class="bg-zinc-900 text-zinc-300 p-3 rounded-lg text-xs overflow-x-auto">작업폴더/
+├── 상품1/
+│   ├── 5.jpg (또는 아무이름.jpg) ← 원본 이미지
+│   └── 설명.txt (선택) ← 상품 설명
+├── 상품2/
+│   ├── image.png
+│   └── info.txt
+└── ...</pre>
+                        </div>
+                        <div class="bg-white rounded-xl p-4 border border-blue-100">
+                            <h4 class="font-bold text-blue-900 mb-2 flex items-center gap-2">📦 결과물</h4>
+                            <div class="grid grid-cols-2 gap-3 text-xs">
+                                <div class="bg-zinc-50 p-3 rounded-lg">
+                                    <p class="font-bold text-zinc-700 mb-1">🖼️ 이미지</p>
+                                    <p class="text-zinc-500">각 폴더 내 <code class="bg-zinc-200 px-1 rounded">output/</code> 폴더에 저장</p>
+                                </div>
+                                <div class="bg-zinc-50 p-3 rounded-lg">
+                                    <p class="font-bold text-zinc-700 mb-1">📊 엑셀</p>
+                                    <p class="text-zinc-500">작업폴더에 <code class="bg-zinc-200 px-1 rounded">폴더명_result.xlsx</code> 생성</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                            <h4 class="font-bold text-amber-800 mb-2 flex items-center gap-2">💡 엑셀 출력 형식</h4>
+                            <ul class="text-amber-700 space-y-1 ml-4 list-disc text-xs">
+                                <li><strong>명품 패션:</strong> 업종 | 상품코드 | 브랜드 | 상품명 | SEO제목 | SEO설명 | SEO키워드</li>
+                                <li><strong>일반/펫/키즈:</strong> 업종 | 상품코드 | 상품명 | SEO제목 | SEO설명 | SEO키워드</li>
+                            </ul>
+                        </div>
+                    </div>
+                </details>
+                
+                <!-- 작업 폴더 -->
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-zinc-100">
+                    <h3 class="font-bold mb-4 flex items-center gap-2">📁 작업 폴더</h3>
+                    <div class="flex gap-2">
+                        <input type="text" id="batchFolderInput" class="flex-1 bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2.5 text-sm" placeholder="폴더를 선택하세요" readonly>
+                        <button onclick="selectBatchFolder()" class="px-5 py-2.5 bg-zinc-900 text-white rounded-xl text-sm font-bold hover:bg-zinc-800">📂 선택</button>
+                        <button onclick="openBatchFolder()" class="px-4 py-2.5 bg-zinc-100 rounded-xl text-sm hover:bg-zinc-200">열기</button>
+                    </div>
+                </div>
+
+                <!-- 폴더 구조 미리보기 -->
+                <div id="folderPreview" class="hidden bg-white rounded-2xl p-5 shadow-sm border border-zinc-100">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold flex items-center gap-2">🔍 폴더 인식 결과</h3>
+                        <div id="folderSummary" class="flex gap-2">
+                            <span class="px-2.5 py-1 text-xs font-bold bg-lime-100 text-lime-700 rounded-lg">✅ 상품 <span id="validCount">0</span>개</span>
+                            <span class="px-2.5 py-1 text-xs font-bold bg-amber-100 text-amber-700 rounded-lg hidden" id="warningBadge">⚠️ 문제 <span id="warningCount">0</span>개</span>
+                            <span class="px-2.5 py-1 text-xs font-bold bg-zinc-100 text-zinc-500 rounded-lg">📄 무시 <span id="ignoredCount">0</span>개</span>
+                        </div>
+                    </div>
+                    <div class="bg-zinc-900 rounded-xl p-4 font-mono text-xs max-h-[200px] overflow-y-auto">
+                        <div id="folderTree" class="text-zinc-300 space-y-0.5"></div>
+                    </div>
+                    <div id="folderTips" class="mt-3 p-3 bg-blue-50 rounded-xl text-xs text-blue-700 hidden">
+                        <span class="font-bold">💡 팁:</span> <span id="folderTipText"></span>
+                    </div>
+                </div>
+
+                <!-- 중단된 작업 알림 -->
+                <div id="resumeAlert" class="hidden bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <span class="text-2xl">⚠️</span>
+                            <div>
+                                <p class="font-bold text-amber-800">중단된 작업이 있습니다</p>
+                                <p id="resumeInfo" class="text-sm text-amber-600"></p>
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="resumeBatch()" class="px-4 py-2 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600">▶️ 이어하기</button>
+                            <button onclick="clearBatchState()" class="px-3 py-2 bg-zinc-200 rounded-xl text-sm hover:bg-zinc-300">✕</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 상품 목록 -->
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-zinc-100">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold flex items-center gap-2">📋 상품 목록</h3>
+                        <div class="flex gap-2">
+                            <button onclick="refreshProductList()" class="px-3 py-1.5 text-xs font-bold bg-zinc-100 rounded-lg hover:bg-zinc-200">🔄 새로고침</button>
+                            <button onclick="toggleSelectAll()" class="px-3 py-1.5 text-xs font-bold bg-zinc-100 rounded-lg hover:bg-zinc-200">✅ 전체선택</button>
+                            <span id="productCount" class="px-3 py-1.5 text-xs font-bold bg-lime-100 text-lime-700 rounded-lg">0개</span>
+                        </div>
+                    </div>
+                    <div class="border border-zinc-200 rounded-xl overflow-hidden max-h-[350px] overflow-y-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-zinc-50 sticky top-0">
+                                <tr class="text-zinc-500">
+                                    <th class="w-12 p-3"><input type="checkbox" id="selectAllCheck" onchange="toggleSelectAll()" class="w-4 h-4 accent-lime-500"></th>
+                                    <th class="text-left p-3 font-bold">폴더명</th>
+                                    <th class="w-20 p-3 font-bold">이미지</th>
+                                    <th class="w-20 p-3 font-bold">텍스트</th>
+                                    <th class="w-28 p-3 font-bold">상태</th>
+                                </tr>
+                            </thead>
+                            <tbody id="productTableBody">
+                                <tr><td colspan="5" class="p-8 text-center text-zinc-400">폴더를 선택하세요</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 생성 옵션 -->
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-zinc-100">
+                    <h3 class="font-bold mb-4 flex items-center gap-2">🎨 생성 옵션</h3>
+                    <div class="flex flex-wrap items-center gap-4">
+                        <label class="flex items-center gap-2 cursor-pointer bg-zinc-50 px-4 py-2.5 rounded-xl hover:bg-zinc-100">
+                            <input type="checkbox" id="optBasicProduct" checked class="w-4 h-4 accent-lime-500">
+                            <span class="text-sm font-medium">🛍️ 기본 정물 (4장)</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer bg-zinc-50 px-4 py-2.5 rounded-xl hover:bg-zinc-100">
+                            <input type="checkbox" id="optBasicModel" checked class="w-4 h-4 accent-lime-500">
+                            <span class="text-sm font-medium">👤 기본 모델 (4장)</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer bg-zinc-50 px-4 py-2.5 rounded-xl hover:bg-zinc-100">
+                            <input type="checkbox" id="optEditorialProduct" class="w-4 h-4 accent-lime-500">
+                            <span class="text-sm font-medium">📸 화보 정물 (4장)</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer bg-zinc-50 px-4 py-2.5 rounded-xl hover:bg-zinc-100">
+                            <input type="checkbox" id="optEditorialModel" class="w-4 h-4 accent-lime-500">
+                            <span class="text-sm font-medium">🎭 화보 모델 (4장)</span>
+                        </label>
+                        <div class="flex items-center gap-2 ml-auto pl-4 border-l border-zinc-200">
+                            <span class="text-sm font-bold text-zinc-600">성별:</span>
+                            <button id="batchGenderAuto" onclick="setBatchGender('auto')" class="batch-gender-btn px-3 py-1.5 text-xs font-bold rounded-lg bg-lime-400 text-zinc-900">🤖 자동</button>
+                            <button id="batchGender여성" onclick="setBatchGender('여성')" class="batch-gender-btn px-3 py-1.5 text-xs font-bold rounded-lg bg-zinc-100 text-zinc-600">👩 여성</button>
+                            <button id="batchGender남성" onclick="setBatchGender('남성')" class="batch-gender-btn px-3 py-1.5 text-xs font-bold rounded-lg bg-zinc-100 text-zinc-600">👨 남성</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 처리 버튼 & 진행률 -->
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-zinc-100">
+                    <div class="flex items-center gap-4">
+                        <button id="batchStartBtn" onclick="startBatchProcess()" class="px-8 py-3.5 bg-zinc-900 text-white rounded-xl font-bold text-sm hover:bg-lime-400 hover:text-zinc-900 flex items-center gap-2 min-w-[180px] justify-center">
+                            <span id="batchBtnIcon">🚀</span>
+                            <span id="batchBtnText">처리 시작</span>
+                        </button>
+                        <button id="batchStopBtn" onclick="stopBatchProcess()" disabled class="px-6 py-3.5 bg-red-500 text-white rounded-xl font-bold text-sm disabled:opacity-40 hover:bg-red-600">⏹️ 중지</button>
+                        <div class="flex-1">
+                            <div class="h-4 bg-zinc-100 rounded-full overflow-hidden">
+                                <div id="batchProgress" class="progress-bar h-full bg-lime-400" style="width:0%"></div>
+                            </div>
+                            <p id="batchProgressText" class="text-xs text-zinc-500 mt-2 font-medium">대기 중</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="tab-settings" class="tab-content hidden h-full p-6 overflow-auto">
+            <div class="max-w-4xl mx-auto space-y-5">
+                <!-- 연결 정보 & 크레딧 -->
+                <div class="bg-gradient-to-r from-zinc-800 to-zinc-900 rounded-2xl p-6 shadow-lg text-white">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold text-lg flex items-center gap-2">🔗 연결 정보</h3>
+                        <div class="flex items-center gap-2 px-3 py-1.5 bg-lime-400/20 rounded-full">
+                            <span class="w-2 h-2 rounded-full bg-lime-400"></span>
+                            <span class="text-xs font-medium text-lime-400">연결됨</span>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white/5 rounded-xl p-5 mb-4">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <p class="text-zinc-400 text-sm">보유 크레딧</p>
+                                <p id="settingsCreditsValue" class="text-4xl font-black text-white">0</p>
+                            </div>
+                            <button onclick="refreshCredits()" class="px-4 py-2 bg-white/10 text-white rounded-xl text-sm font-medium hover:bg-white/20">🔄 새로고침</button>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3 text-xs">
+                            <div class="bg-white/5 rounded-lg p-3 text-center">
+                                <p class="text-zinc-400">Standard 모델</p>
+                                <p class="font-bold text-white">1크레딧 = 4장</p>
+                            </div>
+                            <div class="bg-white/5 rounded-lg p-3 text-center">
+                                <p class="text-zinc-400">Premium 모델</p>
+                                <p class="font-bold text-white">3크레딧 = 4장</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-3">
+                        <a href="https://autopic-web.vercel.app" target="_blank" class="px-5 py-2.5 bg-lime-400 text-zinc-900 rounded-xl font-bold text-sm hover:bg-lime-300">💳 크레딧 충전하기</a>
+                        <button onclick="logout()" class="ml-auto px-5 py-2.5 bg-red-500/20 text-red-400 rounded-xl font-bold text-sm hover:bg-red-500/30 border border-red-500/30">🔓 로그아웃</button>
+                    </div>
+                </div>
+
+                <!-- 업종 설정 (4가지) -->
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-zinc-100">
+                    <h3 class="font-bold mb-5">🏪 업종 설정</h3>
+                    <p class="text-sm text-zinc-500 mb-4">업종에 따라 이미지 스타일과 엑셀 출력 형식이 달라집니다.</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="setBusinessType('luxury')" id="bizTypeLuxury" class="biz-type-btn active p-4 border-2 rounded-xl text-left transition-all">
+                            <div class="flex items-center gap-3">
+                                <span class="text-3xl">👜</span>
+                                <div>
+                                    <p class="font-bold text-zinc-900">명품 패션</p>
+                                    <p class="text-xs text-zinc-500">럭셔리 스타일 · 브랜드 포함</p>
+                                </div>
+                            </div>
+                        </button>
+                        <button onclick="setBusinessType('general')" id="bizTypeGeneral" class="biz-type-btn p-4 border-2 border-zinc-200 rounded-xl text-left hover:border-zinc-300 transition-all">
+                            <div class="flex items-center gap-3">
+                                <span class="text-3xl">👕</span>
+                                <div>
+                                    <p class="font-bold text-zinc-900">일반 패션</p>
+                                    <p class="text-xs text-zinc-500">캐주얼 스타일 · 브랜드 없음</p>
+                                </div>
+                            </div>
+                        </button>
+                        <button onclick="setBusinessType('pet')" id="bizTypePet" class="biz-type-btn p-4 border-2 border-zinc-200 rounded-xl text-left hover:border-zinc-300 transition-all">
+                            <div class="flex items-center gap-3">
+                                <span class="text-3xl">🐕</span>
+                                <div>
+                                    <p class="font-bold text-zinc-900">펫 용품</p>
+                                    <p class="text-xs text-zinc-500">반려동물 착샷 · 브랜드 없음</p>
+                                </div>
+                            </div>
+                        </button>
+                        <button onclick="setBusinessType('kids')" id="bizTypeKids" class="biz-type-btn p-4 border-2 border-zinc-200 rounded-xl text-left hover:border-zinc-300 transition-all">
+                            <div class="flex items-center gap-3">
+                                <span class="text-3xl">🧒</span>
+                                <div>
+                                    <p class="font-bold text-zinc-900">키즈 용품</p>
+                                    <p class="text-xs text-zinc-500">아이 모델 착샷 · 브랜드 없음</p>
+                                </div>
+                            </div>
+                        </button>
+                    </div>
+                    <div id="businessTypeNote" class="flex items-center gap-2 p-3 bg-lime-50 rounded-xl mt-4">
+                        <span>👜</span>
+                        <span class="text-sm text-lime-700 font-medium">명품 패션 모드: 럭셔리 스타일 + 브랜드 컬럼 포함</span>
+                    </div>
+                </div>
+
+                <!-- 이미지 생성 모델 설정 -->
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-zinc-100">
+                    <h3 class="font-bold mb-5">🤖 이미지 생성 모델</h3>
+                    <p class="text-sm text-zinc-500 mb-4">모델에 따라 품질과 비용이 달라집니다.</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="setImageModel('gemini-2.5-flash')" id="modelFlash" class="model-btn p-4 border-2 border-zinc-200 rounded-xl text-left hover:border-zinc-300 transition-all">
+                            <div class="flex items-center gap-3">
+                                <span class="text-2xl">⚡</span>
+                                <div>
+                                    <p class="font-bold text-zinc-900">Standard</p>
+                                    <p class="text-xs text-zinc-500">1크레딧 / 고속</p>
+                                </div>
+                            </div>
+                        </button>
+                        <button onclick="setImageModel('gemini-3-pro')" id="modelPro" class="model-btn active p-4 border-2 rounded-xl text-left transition-all">
+                            <div class="flex items-center gap-3">
+                                <span class="text-2xl">✨</span>
+                                <div>
+                                    <p class="font-bold text-zinc-900">Premium</p>
+                                    <p class="text-xs text-zinc-500">3크레딧 / 고화질</p>
+                                </div>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 브랜드 관리 (명품일 때만 표시) -->
+                <div id="brandSection" class="bg-white rounded-2xl p-6 shadow-sm border border-zinc-100">
+                    <h3 class="font-bold mb-5">🏷️ 브랜드 관리</h3>
+                    <p class="text-sm text-zinc-500 mb-4">명품 패션 모드에서 사용됩니다. AI가 이 목록에서 브랜드를 매칭합니다.</p>
+                    <div class="flex gap-2 mb-4">
+                        <input type="text" id="newBrandInput" class="flex-1 bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2.5 text-sm" placeholder="새 브랜드 입력...">
+                        <button onclick="addBrand()" class="px-5 py-2.5 bg-lime-400 text-zinc-900 rounded-xl text-sm font-bold">➕ 추가</button>
+                    </div>
+                    <div id="brandList" class="flex flex-wrap gap-2 min-h-[50px]"><p class="text-sm text-zinc-400">등록된 브랜드가 없습니다</p></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Logs Tab -->
+        <div id="tab-logs" class="tab-content hidden h-full p-6">
+            <div class="max-w-4xl mx-auto h-full flex flex-col">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-lg">📝 처리 로그</h3>
+                    <button onclick="clearLogs()" class="px-4 py-2 bg-zinc-100 rounded-xl text-sm font-bold hover:bg-zinc-200">🗑️ 로그 삭제</button>
+                </div>
+                <div id="logContainer" class="flex-1 bg-zinc-900 rounded-2xl p-4 font-mono text-xs text-zinc-300 overflow-y-auto">
+                    <p class="text-zinc-500">로그가 여기에 표시됩니다...</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 미리보기 모달 -->
+    <div id="previewModal" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-8">
+        <div class="bg-white rounded-3xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div class="p-5 border-b border-zinc-200 flex items-center justify-between">
+                <h3 id="modalTitle" class="font-bold text-lg">미리보기</h3>
+                <button onclick="closePreviewModal()" class="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-zinc-100">✕</button>
+            </div>
+            <div id="modalContent" class="flex-1 overflow-y-auto p-5"></div>
+        </div>
+    </div>
+
+    <!-- 완료 모달 -->
+    <div id="completeModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-8">
+        <div class="bg-white rounded-3xl max-w-md w-full p-8 text-center animate-fade-in">
+            <div class="w-20 h-20 bg-lime-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <span class="text-4xl">🎉</span>
+            </div>
+            <h3 class="text-2xl font-black text-zinc-900 mb-2">처리 완료!</h3>
+            <p id="completeMessage" class="text-zinc-500 mb-6"></p>
+            <div class="flex gap-3 justify-center">
+                <button onclick="openBatchFolder()" class="px-6 py-3 bg-zinc-100 text-zinc-700 rounded-xl font-bold hover:bg-zinc-200">📂 폴더 열기</button>
+                <button onclick="closeCompleteModal()" class="px-6 py-3 bg-lime-400 text-zinc-900 rounded-xl font-bold hover:bg-lime-500">확인</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+// ===== 상태 =====
+let state = {
+    currentTab: 'studio',
+    uploadedImage: null,
+    mode: 'product',
+    gender: '여성',
+    generatedImages: [],
+    batchFolder: '',
+    batchProducts: [],
+    batchGender: 'auto',
+    isProcessing: false,
+    businessType: 'luxury',
+    imageModel: 'gemini-3-pro',
+    brands: [],
+    webApiConnected: false,
+    batchTotal: 0,
+    batchCurrent: 0,
+};
+
+// ===== 초기화 =====
+document.addEventListener('DOMContentLoaded', () => {
+    setupDropZone();
+    startLogPolling();
+});
+
+// pywebview가 준비되면 설정 로드
+window.addEventListener('pywebviewready', async () => {
+    await loadSettings();
+});
+
+async function loadSettings() {
+    try {
+        const settings = await pywebview.api.get_settings();
+        
+        state.businessType = settings.business_type || 'luxury';
+        updateBusinessTypeUI();
+        
+        state.imageModel = settings.image_model || 'gemini-3-pro';
+        updateImageModelUI();
+        
+        state.brands = settings.brands || [];
+        renderBrands();
+        
+        // API 연결 상태 - 항상 연결됨 (로그인 화면 거쳐옴)
+        state.webApiConnected = true;
+        updateApiStatus(true);
+        
+        // URL 파라미터에서 로그인 정보 확인 (로그인 직후)
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('loggedIn') === 'true') {
+            // 로그인 직후 - URL에서 정보 바로 표시
+            const credits = urlParams.get('credits') || '0';
+            const keyName = urlParams.get('keyName') || '';
+            
+            // 크레딧 표시
+            document.getElementById('settingsCreditsValue').textContent = credits;
+            
+            // 상단 API 상태 연결됨으로 표시
+            updateApiStatus(true);
+            
+            // 키 이름 표시
+            if (keyName) {
+                document.getElementById('keyNameDisplay').classList.remove('hidden');
+                document.getElementById('keyNameDisplay').classList.add('flex');
+                document.getElementById('keyNameText').textContent = keyName;
+            }
+            
+            // URL 파라미터 제거 (주소창 깔끔하게)
+            window.history.replaceState({}, document.title, window.location.pathname);
+        } else {
+            // 일반 실행 (저장된 키로 자동 로그인) - 크레딧 조회
+            await refreshCredits();
+        }
+        
+        if (settings.last_folder) {
+            document.getElementById('batchFolderInput').value = settings.last_folder;
+            state.batchFolder = settings.last_folder;
+            loadProductList(settings.last_folder);
+        }
+    } catch (e) {
+        console.error('설정 로드 실패:', e);
+    }
+}
+
+// ===== 업종 설정 =====
+async function setBusinessType(type) {
+    state.businessType = type;
+    
+    try {
+        const result = await pywebview.api.save_business_type(type);
+        if (result.success) {
+            updateBusinessTypeUI();
+        }
+    } catch (e) {
+        console.error('업종 저장 실패:', e);
+    }
+}
+
+function updateBusinessTypeUI() {
+    const types = {
+        luxury: { icon: '👜', name: '명품 패션', note: '명품 패션 모드: 럭셔리 스타일 + 브랜드 컬럼 포함', useBrand: true },
+        general: { icon: '👕', name: '일반 패션', note: '일반 패션 모드: 캐주얼 스타일 · 브랜드 없음', useBrand: false },
+        pet: { icon: '🐕', name: '펫 용품', note: '펫 용품 모드: 반려동물 착샷 · 브랜드 없음', useBrand: false },
+        kids: { icon: '🧒', name: '키즈 용품', note: '키즈 용품 모드: 아이 모델 착샷 · 브랜드 없음', useBrand: false },
+    };
+    
+    const current = types[state.businessType] || types.luxury;
+    
+    document.querySelectorAll('.biz-type-btn').forEach(btn => {
+        btn.classList.remove('active', 'border-lime-400', 'bg-lime-50');
+        btn.classList.add('border-zinc-200');
+    });
+    
+    const btnIds = { luxury: 'bizTypeLuxury', general: 'bizTypeGeneral', pet: 'bizTypePet', kids: 'bizTypeKids' };
+    const activeBtn = document.getElementById(btnIds[state.businessType]);
+    if (activeBtn) {
+        activeBtn.classList.add('active', 'border-lime-400', 'bg-lime-50');
+        activeBtn.classList.remove('border-zinc-200');
+    }
+    
+    document.getElementById('businessTypeDisplay').innerHTML = `${current.icon} ${current.name}`;
+    document.getElementById('businessTypeNote').innerHTML = `<span>${current.icon}</span><span class="text-sm text-lime-700 font-medium">${current.note}</span>`;
+    
+    const brandSection = document.getElementById('brandSection');
+    brandSection.classList.toggle('hidden', !current.useBrand);
+}
+
+// ===== 이미지 모델 설정 =====
+async function setImageModel(model) {
+    state.imageModel = model;
+    
+    try {
+        await pywebview.api.save_image_model(model);
+        updateImageModelUI();
+    } catch (e) {
+        console.error('모델 저장 실패:', e);
+    }
+}
+
+function updateImageModelUI() {
+    document.querySelectorAll('.model-btn').forEach(btn => {
+        btn.classList.remove('active', 'border-lime-400', 'bg-lime-50');
+        btn.classList.add('border-zinc-200');
+    });
+    
+    const activeBtn = state.imageModel === 'gemini-3-pro' ? 
+        document.getElementById('modelPro') : document.getElementById('modelFlash');
+    
+    if (activeBtn) {
+        activeBtn.classList.add('active', 'border-lime-400', 'bg-lime-50');
+        activeBtn.classList.remove('border-zinc-200');
+    }
+}
+
+// ===== 탭 전환 =====
+function switchTab(tab) {
+    state.currentTab = tab;
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('.tab-btn').forEach(el => {
+        el.classList.remove('active');
+        el.classList.add('text-zinc-400');
+    });
+    document.getElementById(`tab-${tab}`).classList.remove('hidden');
+    document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+    document.querySelector(`[data-tab="${tab}"]`).classList.remove('text-zinc-400');
+}
+
+// ===== 이미지 업로드 =====
+function setupDropZone() {
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', e => { if (e.target.files.length) handleFile(e.target.files[0]); });
+}
+
+function handleFile(file) {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        state.uploadedImage = e.target.result;
+        document.getElementById('previewImage').src = state.uploadedImage;
+        document.getElementById('fileName').textContent = file.name;
+        document.getElementById('uploadPlaceholder').classList.add('hidden');
+        document.getElementById('previewContainer').classList.remove('hidden');
+        document.getElementById('clearImageBtn').classList.remove('hidden');
+        document.getElementById('generateBtn').disabled = false;
+    };
+    reader.readAsDataURL(file);
+}
+
+function clearImage() {
+    state.uploadedImage = null;
+    document.getElementById('uploadPlaceholder').classList.remove('hidden');
+    document.getElementById('previewContainer').classList.add('hidden');
+    document.getElementById('clearImageBtn').classList.add('hidden');
+    document.getElementById('generateBtn').disabled = true;
+    document.getElementById('fileInput').value = '';
+}
+
+// ===== 모드/성별 선택 =====
+function setMode(mode) {
+    state.mode = mode;
+    document.getElementById('modeProduct').className = `py-2.5 text-xs font-bold rounded-lg ${mode === 'product' ? 'bg-white shadow-sm' : 'text-zinc-400'}`;
+    document.getElementById('modeModel').className = `py-2.5 text-xs font-bold rounded-lg ${mode === 'model' ? 'bg-white shadow-sm' : 'text-zinc-400'}`;
+    document.getElementById('genderSection').classList.toggle('hidden', mode === 'product');
+}
+
+function setGender(gender) {
+    state.gender = gender;
+    document.getElementById('genderFemale').className = `py-2.5 text-xs font-bold rounded-lg ${gender === '여성' ? 'bg-zinc-900 text-white' : 'text-zinc-400'}`;
+    document.getElementById('genderMale').className = `py-2.5 text-xs font-bold rounded-lg ${gender === '남성' ? 'bg-zinc-900 text-white' : 'text-zinc-400'}`;
+}
+
+// ===== 이미지 생성 =====
+async function generateImage() {
+    if (!state.uploadedImage) return;
+    
+    const btn = document.getElementById('generateBtn');
+    btn.disabled = true;
+    document.getElementById('generateBtnIcon').classList.add('hidden');
+    document.getElementById('generateBtnText').textContent = '생성 중...';
+    document.getElementById('generateBtnLoading').classList.remove('hidden');
+    
+    document.getElementById('emptyState').classList.add('hidden');
+    document.getElementById('resultGrid').classList.add('hidden');
+    document.getElementById('loadingState').classList.remove('hidden');
+    
+    try {
+        const result = await pywebview.api.generate_image(
+            state.uploadedImage,
+            state.mode,
+            state.mode === 'model' ? state.gender : '',
+            ''
+        );
+        
+        if (result.success) {
+            state.generatedImages = result.images;
+            displayResults(result.images);
+            document.getElementById('downloadAllBtn').disabled = false;
+        } else {
+            alert('생성 실패: ' + result.error);
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('emptyState').classList.remove('hidden');
+        }
+    } catch (e) {
+        alert('오류: ' + e);
+        document.getElementById('loadingState').classList.add('hidden');
+        document.getElementById('emptyState').classList.remove('hidden');
+    } finally {
+        btn.disabled = false;
+        document.getElementById('generateBtnIcon').classList.remove('hidden');
+        document.getElementById('generateBtnText').textContent = '이미지 생성하기';
+        document.getElementById('generateBtnLoading').classList.add('hidden');
+    }
+}
+
+function displayResults(images) {
+    document.getElementById('loadingState').classList.add('hidden');
+    const grid = document.getElementById('resultGrid');
+    grid.innerHTML = '';
+    
+    const labels = ['정면', '측면', '후면', '디테일'];
+    images.forEach((img, i) => {
+        const card = document.createElement('div');
+        card.className = 'image-card bg-white rounded-2xl overflow-hidden shadow-lg border border-zinc-100';
+        card.innerHTML = `
+            <div class="aspect-square bg-zinc-50 flex items-center justify-center p-4">
+                <img src="${img}" class="max-w-full max-h-full object-contain rounded-lg" onclick="openImagePreview('${img}')">
+            </div>
+            <div class="p-3 flex items-center justify-between">
+                <span class="text-xs font-bold text-zinc-500">${labels[i]}</span>
+                <button onclick="downloadSingle(${i})" class="text-xs font-bold text-lime-600 hover:text-lime-700">📥 저장</button>
+            </div>
+        `;
+        grid.appendChild(card);
+    });
+    
+    grid.classList.remove('hidden');
+    document.getElementById('canvasInfo').textContent = `${images.length}장 생성됨`;
+}
+
+async function downloadSingle(index) {
+    const img = state.generatedImages[index];
+    const labels = ['front', 'side', 'back', 'detail'];
+    await pywebview.api.save_image(img, `autopic_${labels[index]}.jpg`);
+}
+
+async function downloadAll() {
+    if (state.generatedImages.length === 0) return;
+    await pywebview.api.save_all_images(state.generatedImages);
+}
+
+// ===== 배치 처리 =====
+async function selectBatchFolder() {
+    const result = await pywebview.api.select_folder();
+    if (result.success) {
+        state.batchFolder = result.folder;
+        document.getElementById('batchFolderInput').value = result.folder;
+        loadProductList(result.folder);
+        checkBatchState(result.folder);
+    }
+}
+
+async function openBatchFolder() {
+    if (state.batchFolder) await pywebview.api.open_folder(state.batchFolder);
+}
+
+async function loadProductList(folder) {
+    const result = await pywebview.api.get_product_list(folder);
+    if (result.success) {
+        state.batchProducts = result.products;
+        renderProductList(result.products);
+        renderFolderPreview(folder, result.products);
+    }
+}
+
+function renderFolderPreview(folderPath, products) {
+    const previewEl = document.getElementById('folderPreview');
+    const treeEl = document.getElementById('folderTree');
+    const tipsEl = document.getElementById('folderTips');
+    const tipTextEl = document.getElementById('folderTipText');
+    
+    if (!products.length) {
+        previewEl.classList.add('hidden');
+        return;
+    }
+    
+    previewEl.classList.remove('hidden');
+    
+    // 분류
+    const valid = products.filter(p => p.image_count > 0);
+    const warnings = products.filter(p => p.image_count === 0);
+    const completed = products.filter(p => p.has_output);
+    
+    // 요약 업데이트
+    document.getElementById('validCount').textContent = valid.length;
+    document.getElementById('ignoredCount').textContent = '0';
+    
+    const warningBadge = document.getElementById('warningBadge');
+    if (warnings.length > 0) {
+        warningBadge.classList.remove('hidden');
+        document.getElementById('warningCount').textContent = warnings.length;
+    } else {
+        warningBadge.classList.add('hidden');
+    }
+    
+    // 폴더명 추출
+    const folderName = folderPath.split(/[\\/]/).pop();
+    
+    // 트리 렌더링
+    let treeHtml = `<div class="text-lime-400 font-bold">📁 ${folderName}/</div>`;
+    
+    products.forEach((p, idx) => {
+        const isLast = idx === products.length - 1;
+        const prefix = isLast ? '└── ' : '├── ';
+        
+        let icon, colorClass, statusText;
+        if (p.image_count === 0) {
+            icon = '⚠️';
+            colorClass = 'text-amber-400';
+            statusText = '이미지 없음';
+        } else if (p.has_output) {
+            icon = '✅';
+            colorClass = 'text-lime-400';
+            statusText = `완료 (${p.output_count}장)`;
+        } else {
+            icon = '📂';
+            colorClass = 'text-zinc-300';
+            statusText = `이미지 ${p.image_count}장`;
+        }
+        
+        treeHtml += `
+            <div class="${colorClass} flex items-center gap-2">
+                <span class="text-zinc-500">${prefix}</span>
+                <span>${icon} ${p.name}/</span>
+                <span class="text-zinc-500 text-[10px]">← ${statusText}</span>
+            </div>`;
+    });
+    
+    treeEl.innerHTML = treeHtml;
+    
+    // 팁 표시
+    if (warnings.length > 0) {
+        tipsEl.classList.remove('hidden');
+        tipTextEl.textContent = `${warnings.length}개 폴더에 이미지가 없습니다. 각 상품 폴더에 이미지 파일(JPG, PNG, WebP)을 넣어주세요.`;
+    } else if (valid.length > 0 && completed.length === valid.length) {
+        tipsEl.classList.remove('hidden');
+        tipTextEl.textContent = '모든 상품이 처리 완료되었습니다! 🎉';
+    } else if (valid.length > 0) {
+        tipsEl.classList.remove('hidden');
+        tipTextEl.textContent = `${valid.length}개 상품이 처리 대기 중입니다. "처리 시작" 버튼을 눌러 진행하세요.`;
+    } else {
+        tipsEl.classList.add('hidden');
+    }
+}
+
+function renderProductList(products) {
+    const tbody = document.getElementById('productTableBody');
+    if (!products.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-zinc-400">상품 폴더가 없습니다</td></tr>';
+        document.getElementById('productCount').textContent = '0개';
+        return;
+    }
+    
+    tbody.innerHTML = products.map((p, i) => `
+        <tr class="border-t border-zinc-100 hover:bg-zinc-50">
+            <td class="p-3 text-center"><input type="checkbox" class="product-check w-4 h-4 accent-lime-500" data-index="${i}" ${!p.has_output ? 'checked' : ''}></td>
+            <td class="p-3 font-medium">${p.name}</td>
+            <td class="p-3 text-center">${p.image_count}장</td>
+            <td class="p-3 text-center">${p.has_text ? '✅' : '❌'}</td>
+            <td class="p-3 text-center">
+                ${p.has_output ? 
+                    `<span class="inline-flex items-center gap-1 text-xs font-bold text-lime-600 bg-lime-50 px-2 py-1 rounded-lg">✅ 완료 (${p.output_count}장)</span>
+                     <button onclick="previewProduct('${p.path}')" class="ml-1 text-xs text-zinc-400 hover:text-zinc-600">👁️</button>` : 
+                    '<span class="text-xs text-zinc-400">대기</span>'
+                }
+            </td>
+        </tr>
+    `).join('');
+    
+    document.getElementById('productCount').textContent = `${products.length}개`;
+}
+
+function toggleSelectAll() {
+    const checkAll = document.getElementById('selectAllCheck').checked;
+    document.querySelectorAll('.product-check').forEach(cb => cb.checked = checkAll);
+}
+
+function refreshProductList() {
+    if (state.batchFolder) loadProductList(state.batchFolder);
+}
+
+function setBatchGender(gender) {
+    state.batchGender = gender;
+    document.querySelectorAll('.batch-gender-btn').forEach(btn => {
+        btn.className = 'batch-gender-btn px-3 py-1.5 text-xs font-bold rounded-lg bg-zinc-100 text-zinc-600';
+    });
+    const activeBtn = document.getElementById(`batchGender${gender === 'auto' ? 'Auto' : gender}`);
+    if (activeBtn) activeBtn.className = 'batch-gender-btn px-3 py-1.5 text-xs font-bold rounded-lg bg-lime-400 text-zinc-900';
+}
+
+async function checkBatchState(folder) {
+    const result = await pywebview.api.check_batch_state(folder);
+    if (result.has_state) {
+        document.getElementById('resumeAlert').classList.remove('hidden');
+        document.getElementById('resumeInfo').textContent = `${result.current_index}/${result.total} 완료, ${result.remaining}개 남음`;
+    } else {
+        document.getElementById('resumeAlert').classList.add('hidden');
+    }
+}
+
+async function resumeBatch() {
+    await pywebview.api.resume_batch_process(state.batchFolder);
+    document.getElementById('resumeAlert').classList.add('hidden');
+}
+
+async function clearBatchState() {
+    await pywebview.api.clear_batch_state(state.batchFolder);
+    document.getElementById('resumeAlert').classList.add('hidden');
+}
+
+async function startBatchProcess() {
+    const selected = Array.from(document.querySelectorAll('.product-check:checked')).map(cb => state.batchProducts[cb.dataset.index].name);
+    if (!selected.length) { alert('처리할 상품을 선택하세요'); return; }
+    
+    const options = {
+        basic_product: document.getElementById('optBasicProduct').checked,
+        basic_model: document.getElementById('optBasicModel').checked,
+        editorial_product: document.getElementById('optEditorialProduct').checked,
+        editorial_model: document.getElementById('optEditorialModel').checked,
+        gender: state.batchGender,
+    };
+    
+    state.isProcessing = true;
+    state.batchTotal = selected.length;
+    state.batchCurrent = 0;
+    
+    document.getElementById('batchStartBtn').disabled = true;
+    document.getElementById('batchStopBtn').disabled = false;
+    document.getElementById('batchBtnIcon').textContent = '⏳';
+    document.getElementById('batchBtnText').textContent = '처리 중...';
+    document.getElementById('batchProgress').style.width = '0%';
+    document.getElementById('batchProgressText').textContent = `0/${selected.length} 처리 중...`;
+    
+    try {
+        const result = await pywebview.api.process_batch(state.batchFolder, selected, options);
+        
+        if (result.success) {
+            // 완료 모달 표시
+            document.getElementById('completeMessage').textContent = 
+                `총 ${result.total}개 상품 중 ${result.success_count}개 성공, ${result.fail_count}개 실패`;
+            document.getElementById('completeModal').classList.remove('hidden');
+            document.getElementById('completeModal').classList.add('flex');
+        } else if (result.error_type === 'insufficient_credits') {
+            alert(`⚠️ 크레딧 부족!\n\n필요: ${result.required_credits} 크레딧\n보유: ${result.current_credits} 크레딧\n\n처리 가능한 상품: ${result.possible_count}개`);
+        } else {
+            alert('❌ 오류: ' + result.error);
+        }
+        refreshProductList();
+    } catch (e) {
+        alert('❌ 오류: ' + e);
+    } finally {
+        state.isProcessing = false;
+        document.getElementById('batchStartBtn').disabled = false;
+        document.getElementById('batchStopBtn').disabled = true;
+        document.getElementById('batchBtnIcon').textContent = '🚀';
+        document.getElementById('batchBtnText').textContent = '처리 시작';
+    }
+}
+
+function closeCompleteModal() {
+    document.getElementById('completeModal').classList.add('hidden');
+    document.getElementById('completeModal').classList.remove('flex');
+    document.getElementById('batchProgress').style.width = '0%';
+    document.getElementById('batchProgressText').textContent = '대기 중';
+}
+
+async function stopBatchProcess() {
+    await pywebview.api.stop_batch();
+    document.getElementById('batchStopBtn').disabled = true;
+}
+
+async function previewProduct(path) {
+    const result = await pywebview.api.get_product_preview(path);
+    if (result.success) {
+        document.getElementById('modalTitle').textContent = result.name;
+        let html = '<div class="grid grid-cols-2 gap-4">';
+        const typeLabels = { basic_product: '🛍️ 기본 정물', basic_model: '👤 기본 모델', editorial_product: '📸 화보 정물', editorial_model: '🎭 화보 모델' };
+        for (const [type, images] of Object.entries(result.images)) {
+            html += `<div class="bg-zinc-50 rounded-xl p-4"><h4 class="font-bold text-sm mb-3">${typeLabels[type] || type}</h4><div class="grid grid-cols-2 gap-2">`;
+            images.forEach(img => { html += `<img src="${img.thumbnail}" class="w-full rounded-lg cursor-pointer hover:opacity-80" onclick="openImagePreview('${img.thumbnail}')">`; });
+            html += '</div></div>';
+        }
+        html += '</div>';
+        document.getElementById('modalContent').innerHTML = html;
+        document.getElementById('previewModal').classList.remove('hidden');
+        document.getElementById('previewModal').classList.add('flex');
+    }
+}
+
+function closePreviewModal() {
+    document.getElementById('previewModal').classList.add('hidden');
+    document.getElementById('previewModal').classList.remove('flex');
+}
+
+function openImagePreview(src) {
+    window.open(src, '_blank');
+}
+
+// ===== 브랜드 관리 =====
+async function addBrand() {
+    const input = document.getElementById('newBrandInput');
+    const name = input.value.trim().toUpperCase();
+    if (!name) return;
+    if (!state.brands.includes(name)) {
+        state.brands.push(name);
+        state.brands.sort();
+        await pywebview.api.save_brands(state.brands);
+        renderBrands();
+    }
+    input.value = '';
+}
+
+async function removeBrand(name) {
+    state.brands = state.brands.filter(b => b !== name);
+    await pywebview.api.save_brands(state.brands);
+    renderBrands();
+}
+
+function renderBrands() {
+    const container = document.getElementById('brandList');
+    if (!state.brands.length) {
+        container.innerHTML = '<p class="text-sm text-zinc-400">등록된 브랜드가 없습니다</p>';
+        return;
+    }
+    container.innerHTML = state.brands.map(b => `
+        <span class="inline-flex items-center gap-1 bg-zinc-100 px-3 py-1.5 rounded-lg text-sm font-medium">
+            ${b}
+            <button onclick="removeBrand('${b}')" class="text-zinc-400 hover:text-red-500 ml-1">×</button>
+        </span>
+    `).join('');
+}
+
+// ===== 크레딧 & 로그아웃 =====
+async function refreshCredits() {
+    try {
+        const result = await pywebview.api.check_web_credits();
+        if (result.success) {
+            document.getElementById('settingsCreditsValue').textContent = result.credits;
+            // 상단 API 상태도 연결됨으로 표시
+            updateApiStatus(true);
+            // API 키 이름 표시
+            if (result.key_name) {
+                document.getElementById('keyNameDisplay').classList.remove('hidden');
+                document.getElementById('keyNameDisplay').classList.add('flex');
+                document.getElementById('keyNameText').textContent = result.key_name;
+            }
+        } else {
+            // 실패 시 미연결 표시
+            updateApiStatus(false);
+        }
+    } catch (e) {
+        console.error('크레딧 조회 실패:', e);
+        updateApiStatus(false);
+    }
+}
+
+async function logout() {
+    if (!confirm('로그아웃 하시겠습니까?\n\n다시 사용하려면 API 키를 다시 입력해야 합니다.')) {
+        return;
+    }
+    
+    const result = await pywebview.api.logout();
+    if (result.success) {
+        // 로그인 화면으로 이동
+        window.location.href = 'login.html';
+    } else {
+        alert('로그아웃 실패: ' + result.error);
+    }
+}
+
+function updateApiStatus(connected) {
+    const el = document.getElementById('apiStatus');
+    el.innerHTML = connected ?
+        '<span class="w-2 h-2 rounded-full bg-lime-500"></span><span class="text-xs font-medium text-zinc-700">API 연결됨</span>' :
+        '<span class="w-2 h-2 rounded-full bg-red-500"></span><span class="text-xs font-medium text-zinc-500">API 미연결</span>';
+}
+
+// ===== 로그 및 진행률 =====
+function startLogPolling() {
+    setInterval(async () => {
+        try {
+            const logs = await pywebview.api.get_logs();
+            if (logs.length) {
+                const container = document.getElementById('logContainer');
+                logs.forEach(log => {
+                    // PROGRESS 메시지 처리 (진행률 업데이트)
+                    if (log.message.startsWith('PROGRESS:')) {
+                        const parts = log.message.split(':');
+                        if (parts.length >= 3) {
+                            const current = parseInt(parts[1]);
+                            const total = parseInt(parts[2]);
+                            if (!isNaN(current) && !isNaN(total) && total > 0) {
+                                const percent = Math.round((current / total) * 100);
+                                document.getElementById('batchProgress').style.width = `${percent}%`;
+                                document.getElementById('batchProgressText').textContent = `${current}/${total} 처리 중... (${percent}%)`;
+                            }
+                        }
+                        return; // PROGRESS 메시지는 로그에 표시 안 함
+                    }
+                    
+                    // 일반 로그 표시
+                    const line = document.createElement('div');
+                    line.className = log.level === 'ERROR' ? 'text-red-400' : (log.level === 'WARNING' ? 'text-yellow-400' : 'text-zinc-300');
+                    line.textContent = `[${log.time}] ${log.message}`;
+                    container.appendChild(line);
+                });
+                container.scrollTop = container.scrollHeight;
+            }
+        } catch (e) {}
+    }, 300); // 300ms로 더 빠르게 폴링
+}
+
+async function clearLogs() {
+    await pywebview.api.clear_logs();
+    document.getElementById('logContainer').innerHTML = '<p class="text-zinc-500">로그가 삭제되었습니다.</p>';
+}
+</script>
+</body>
+</html>

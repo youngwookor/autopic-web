@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autopic - 로그인</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+        * { font-family: 'Inter', 'Malgun Gothic', sans-serif; box-sizing: border-box; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .animate-fade-in { animation: fadeIn 0.5s ease-out; }
+        .animate-pulse-slow { animation: pulse 2s ease-in-out infinite; }
+        .animate-spin { animation: spin 1s linear infinite; }
+        .input-focus:focus { box-shadow: 0 0 0 3px rgba(163, 230, 53, 0.3); }
+        body {
+            background: linear-gradient(135deg, #18181b 0%, #27272a 50%, #18181b 100%);
+            min-height: 100vh;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center p-4">
+    <div class="w-full max-w-md animate-fade-in">
+        <!-- 로고 영역 -->
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-20 h-20 bg-zinc-800 rounded-3xl mb-6 shadow-2xl border border-zinc-700">
+                <svg viewBox="0 0 24 24" class="w-10 h-10 text-lime-400" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
+                    <circle cx="12" cy="13" r="3"/>
+                </svg>
+            </div>
+            <h1 class="text-3xl font-black text-white tracking-tight mb-2">Autopic</h1>
+            <p class="text-zinc-400 text-sm">AI 상품 이미지 자동 생성</p>
+        </div>
+
+        <!-- 로그인 카드 -->
+        <div class="bg-zinc-900 rounded-3xl p-8 shadow-2xl border border-zinc-800">
+            <!-- 에러 메시지 -->
+            <div id="errorMessage" class="hidden mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
+                <p class="text-red-400 text-sm font-medium text-center" id="errorText"></p>
+            </div>
+
+            <!-- API 키 입력 -->
+            <div class="mb-6">
+                <label class="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3">API 키</label>
+                <div class="relative">
+                    <input 
+                        type="password" 
+                        id="apiKeyInput" 
+                        class="input-focus w-full bg-zinc-800 border-2 border-zinc-700 rounded-xl px-4 py-4 text-white placeholder-zinc-500 text-sm transition-all focus:border-lime-400 focus:outline-none"
+                        placeholder="ap_xxxx... 형식의 API 키 입력"
+                        autocomplete="off"
+                    >
+                    <button 
+                        onclick="toggleKeyVisibility()" 
+                        class="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors p-1"
+                    >
+                        <svg id="eyeIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                        </svg>
+                        <svg id="eyeOffIcon" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 로그인 버튼 -->
+            <button 
+                onclick="login()" 
+                id="loginBtn"
+                class="w-full py-4 bg-lime-400 text-zinc-900 rounded-xl font-black text-sm hover:bg-lime-300 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                <span id="loginBtnIcon">🔗</span>
+                <span id="loginBtnText">연동하기</span>
+                <div id="loginBtnLoading" class="hidden">
+                    <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                </div>
+            </button>
+
+            <!-- 구분선 -->
+            <div class="flex items-center my-6">
+                <div class="flex-1 h-px bg-zinc-700"></div>
+                <span class="px-4 text-xs text-zinc-500">API 키가 없으신가요?</span>
+                <div class="flex-1 h-px bg-zinc-700"></div>
+            </div>
+
+            <!-- 발급 안내 -->
+            <div class="bg-zinc-800/50 rounded-xl p-5 border border-zinc-700/50">
+                <h3 class="font-bold text-white text-sm mb-3 flex items-center gap-2">
+                    <span class="text-lime-400">💡</span> API 키 발급 방법
+                </h3>
+                <ol class="space-y-2 text-sm text-zinc-400">
+                    <li class="flex items-start gap-2">
+                        <span class="w-5 h-5 bg-zinc-700 rounded-full flex items-center justify-center text-xs text-zinc-300 shrink-0 mt-0.5">1</span>
+                        <span><a href="https://autopic-web.vercel.app" target="_blank" class="text-lime-400 hover:underline font-medium">autopic-web.vercel.app</a> 접속</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <span class="w-5 h-5 bg-zinc-700 rounded-full flex items-center justify-center text-xs text-zinc-300 shrink-0 mt-0.5">2</span>
+                        <span>회원가입 후 크레딧 충전</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <span class="w-5 h-5 bg-zinc-700 rounded-full flex items-center justify-center text-xs text-zinc-300 shrink-0 mt-0.5">3</span>
+                        <span>마이페이지 → API 키 관리</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <span class="w-5 h-5 bg-zinc-700 rounded-full flex items-center justify-center text-xs text-zinc-300 shrink-0 mt-0.5">4</span>
+                        <span>"새 API 키 생성" 클릭 후 복사</span>
+                    </li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- 푸터 -->
+        <p class="text-center text-zinc-600 text-xs mt-6">
+            Autopic Desktop v2.7 · Powered by AI
+        </p>
+    </div>
+
+    <script>
+        let isKeyVisible = false;
+
+        // Enter 키로 로그인
+        document.getElementById('apiKeyInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') login();
+        });
+
+        // 포커스 자동 설정
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('apiKeyInput').focus();
+        });
+
+        function toggleKeyVisibility() {
+            isKeyVisible = !isKeyVisible;
+            const input = document.getElementById('apiKeyInput');
+            const eyeIcon = document.getElementById('eyeIcon');
+            const eyeOffIcon = document.getElementById('eyeOffIcon');
+            
+            input.type = isKeyVisible ? 'text' : 'password';
+            eyeIcon.classList.toggle('hidden', isKeyVisible);
+            eyeOffIcon.classList.toggle('hidden', !isKeyVisible);
+        }
+
+        function showError(message) {
+            const errorEl = document.getElementById('errorMessage');
+            const errorText = document.getElementById('errorText');
+            errorText.textContent = message;
+            errorEl.classList.remove('hidden');
+        }
+
+        function hideError() {
+            document.getElementById('errorMessage').classList.add('hidden');
+        }
+
+        function setLoading(loading) {
+            const btn = document.getElementById('loginBtn');
+            const icon = document.getElementById('loginBtnIcon');
+            const text = document.getElementById('loginBtnText');
+            const loadingEl = document.getElementById('loginBtnLoading');
+            
+            btn.disabled = loading;
+            icon.classList.toggle('hidden', loading);
+            text.textContent = loading ? '연동 중...' : '연동하기';
+            loadingEl.classList.toggle('hidden', !loading);
+        }
+
+        async function login() {
+            const apiKey = document.getElementById('apiKeyInput').value.trim();
+            
+            hideError();
+            
+            if (!apiKey) {
+                showError('API 키를 입력해주세요');
+                return;
+            }
+            
+            if (!apiKey.startsWith('ap_')) {
+                showError('올바른 API 키 형식이 아닙니다 (ap_로 시작해야 합니다)');
+                return;
+            }
+            
+            setLoading(true);
+            
+            try {
+                const result = await pywebview.api.login_with_api_key(apiKey);
+                
+                if (result.success) {
+                    // 로그인 성공 - 크레딧과 키 이름을 URL 파라미터로 전달
+                    const params = new URLSearchParams();
+                    params.set('credits', result.credits || 0);
+                    params.set('keyName', result.key_name || '');
+                    params.set('loggedIn', 'true');
+                    window.location.href = 'index.html?' + params.toString();
+                } else {
+                    showError(result.error || '연동에 실패했습니다');
+                }
+            } catch (e) {
+                showError('서버 연결에 실패했습니다: ' + e);
+            } finally {
+                setLoading(false);
+            }
+        }
+    </script>
+</body>
+</html>
