@@ -276,23 +276,23 @@ export default function ApiKeysPage() {
 
           {/* 사용 방법 */}
           <div className="mt-6 pt-6 border-t border-white/10">
-            <h4 className="font-medium mb-3">사용 방법</h4>
+            <h4 className="font-medium mb-3">설치 방법</h4>
             <ol className="space-y-2 text-sm text-zinc-300">
               <li className="flex items-start gap-2">
                 <span className="w-5 h-5 bg-white/10 rounded-full flex items-center justify-center text-xs flex-shrink-0">1</span>
-                <span>위에서 API 키를 생성하고 복사합니다</span>
+                <span>다운로드한 ZIP 파일 우클릭 → 속성 → <strong className="text-lime-400">"차단 해제"</strong> 체크 후 확인</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="w-5 h-5 bg-white/10 rounded-full flex items-center justify-center text-xs flex-shrink-0">2</span>
-                <span>설치형 프로그램을 다운로드하여 실행합니다</span>
+                <span>ZIP 파일 압축 해제 후 Autopic.exe 실행</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="w-5 h-5 bg-white/10 rounded-full flex items-center justify-center text-xs flex-shrink-0">3</span>
-                <span>프로그램 설정에서 API 키를 입력합니다</span>
+                <span>위에서 생성한 API 키를 프로그램에 입력</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="w-5 h-5 bg-white/10 rounded-full flex items-center justify-center text-xs flex-shrink-0">4</span>
-                <span>크레딧이 자동으로 연동되어 바로 사용할 수 있습니다</span>
+                <span>크레딧이 자동으로 연동되어 바로 사용 가능!</span>
               </li>
             </ol>
           </div>
