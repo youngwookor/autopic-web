@@ -584,6 +584,41 @@ def build_model_prompt(category: str, gender: str, target: str = "사람") -> st
     config = CATEGORY_MODEL_CONFIG.get(category_group, CATEGORY_MODEL_CONFIG["의류"])
     gender_model = convert_gender_to_model(gender)
     
+    # 펫용품일 때는 강아지/고양이만 나오도록 별도 프롬프트
+    if category_group == "펫용품":
+        return f"""Create adorable pet photos featuring a cute pet wearing/using this exact {config['name_en']}.
+
+CRITICAL OUTPUT FORMAT:
+- Generate a SINGLE image containing a 2x2 GRID (4 photos in 2 rows, 2 columns)
+- The output must be ONE square image divided into 4 equal quadrants
+
+SUBJECT: Cute, well-groomed PET (dog or cat) - NOT a human model
+- Same pet in ALL 4 shots
+- Pet must be WEARING or USING the product
+- Adorable, photogenic pet with expressive eyes
+
+{config['size_note']}
+
+VISUAL STYLE:
+- Clean, bright studio setting
+- Pure white background (#FFFFFF)
+- Soft, even lighting
+- Professional pet photography style
+
+2x2 GRID LAYOUT:
+[TOP-LEFT]: {config['pose_front']}
+[TOP-RIGHT]: {config['pose_side']}
+[BOTTOM-LEFT]: {config['pose_back']}
+[BOTTOM-RIGHT]: {config['pose_detail']}
+
+ABSOLUTELY CRITICAL:
+- The product must be worn BY THE PET (dog or cat) ONLY
+- Do NOT show any human in the image
+- Do NOT show any human hands holding the pet
+- Only the pet wearing/using the product
+- Same pet in ALL 4 shots
+- Product must match EXACTLY - same color, pattern, material, design"""
+    
     template = """Create professional luxury fashion e-commerce model photos with this exact {product_type}.
 
 {size_note}
