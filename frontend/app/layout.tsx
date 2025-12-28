@@ -15,16 +15,31 @@ export const metadata: Metadata = {
   },
   description: "AI가 완성하는 커머스 사진의 새로운 기준. 상품 사진만 업로드하면 전문 스튜디오 퀄리티의 상품 이미지를 자동 생성합니다. 스마트스토어, 쿠팡, 11번가 셀러를 위한 AI 이미지 생성 서비스.",
   keywords: [
+    // 핵심 키워드
+    "AI 이미지 생성",
+    "이미지 생성",
     "AI 상품 이미지",
     "상품 사진 생성",
-    "AI 이미지 생성",
+    // 촬영 관련
+    "상품 촬영",
+    "이미지 촬영",
+    "상품 촬영 대행",
+    "상품 사진 촬영",
+    "모델 촬영",
+    "착용샷 촬영",
+    // 셀러 타겟
     "스마트스토어 상품사진",
     "쿠팡 상품이미지",
-    "이커머스 사진",
-    "상품 촬영 대행",
-    "AI 모델 사진",
-    "상품 배경 제거",
+    "11번가 상품사진",
     "온라인 셀러 도구",
+    "이커머스 사진",
+    // 기능 관련
+    "AI 모델 사진",
+    "AI 착용샷",
+    "상품 배경 제거",
+    "배경 합성",
+    "누끼 따기",
+    // 브랜드
     "AUTOPIC",
     "오토픽",
   ],
@@ -83,9 +98,9 @@ export const metadata: Metadata = {
     canonical: siteUrl,
   },
   
-  // 네이버 웹마스터 도구 인증 (필요시 추가)
+  // 검색엔진 인증
   verification: {
-    google: '', // Google Search Console 인증 코드 (나중에 추가)
+    google: '3U3dm8-xCE4YimUny6Z6TiHuWzLrIBxvPLPJfvVJCWw', // Google Search Console
     // other: {
     //   'naver-site-verification': '', // 네이버 웹마스터 인증 코드
     // },
