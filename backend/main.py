@@ -172,6 +172,7 @@ CATEGORY1_TO_GROUP = {
     "유아": "키즈",
     "펫": "펫용품",
     "반려동물": "펫용품",
+    "펫용품": "펫용품",
     "뷰티": "뷰티",
     "화장품": "뷰티",
     "스킨케어": "뷰티",
@@ -179,6 +180,13 @@ CATEGORY1_TO_GROUP = {
     "운동": "스포츠",
     "레저": "스포츠",
     "애슬레저": "스포츠",
+    # 식품 카테고리 추가
+    "식품": "식품",
+    "음식": "식품",
+    "음료": "식품",
+    "식재료": "식품",
+    "간식": "식품",
+    "베이커리": "식품",
 }
 
 # 2차 카테고리 → 그룹 매핑 (한글)
@@ -249,12 +257,14 @@ CATEGORY_EN_TO_GROUP = {
     "pet": "펫용품",
     "beauty": "뷰티",
     "sports": "스포츠",
+    "food": "식품",
 }
 
 # TARGET → 카테고리 그룹 매핑
 TARGET_TO_CATEGORY_GROUP = {
     "반려동물": "펫용품",
     "아동": "키즈",
+    "식품": "식품",
     "사람": None,  # None이면 기존 카테고리 유지
 }
 
@@ -419,7 +429,7 @@ CATEGORY_MODEL_CONFIG = {
         "pose_back": "Pet wearing product, 3/4 ANGLE view - pet looking adorable",
         "pose_detail": "Close-up DETAIL of product ON THE PET - showing quality and design",
         "size_note": "Use a cute, well-groomed pet (dog or cat). Pet should be the main focus.",
-        "special_instruction": "CRITICAL: The product must be worn BY THE PET, not by a human. Show a cute dog or cat wearing/using the product. Warm, loving atmosphere.",
+        "special_instruction": "CRITICAL: The product must be worn BY THE PET ONLY, NOT by a human. Do NOT show any human hands holding the pet. Do NOT show any person in the image. Only the pet wearing/using the product in a natural, adorable pose. Warm, loving atmosphere.",
     },
     "뷰티": {
         "name_en": "beauty/cosmetic product",
@@ -438,6 +448,15 @@ CATEGORY_MODEL_CONFIG = {
         "pose_detail": "Upper body or focus area DETAIL - highlighting technical fabric and fit",
         "size_note": "Model should look fit and athletic. Dynamic, energetic poses.",
         "special_instruction": "CRITICAL: Use fit, athletic model. Dynamic poses suggesting movement. Gym or outdoor sports setting optional.",
+    },
+    "식품": {
+        "name_en": "food/beverage product",
+        "pose_front": "Appetizing FRONT view of food - beautiful plating, restaurant quality",
+        "pose_side": "Food from SIDE angle - showing layers, texture, and depth",
+        "pose_back": "Food from different ANGLE - showing another appetizing perspective",
+        "pose_detail": "Close-up DETAIL shot - showing texture, freshness, and quality",
+        "size_note": "Food should look fresh, delicious, and professionally styled.",
+        "special_instruction": "CRITICAL: Professional food photography style. Soft, warm lighting. Make the food look absolutely delicious and appetizing. Clean, elegant plating.",
     },
 }
 
@@ -522,6 +541,28 @@ STYLE REQUIREMENTS:
 
 CRITICAL: Keep ALL original product details EXACTLY as shown. Make it appealing to loving pet owners."""
 
+PROMPT_PRODUCT_EDITORIAL_FOOD = """Create professional, appetizing food photography.
+CRITICAL OUTPUT FORMAT:
+- Generate a SINGLE image containing a 2x2 GRID (4 photos arranged in 2 rows, 2 columns)
+- The output must be ONE square image divided into 4 equal quadrants
+
+STYLE REQUIREMENTS:
+- Professional food photography lighting
+- Soft, warm, appetizing atmosphere
+- Clean, elegant backgrounds (marble, wood, neutral tones)
+- Beautiful plating and food styling
+- Restaurant-quality presentation
+- Shallow depth of field for artistic effect
+- Props like utensils, napkins, ingredients for context
+
+2x2 grid layout:
+[top-left]: Hero shot - most appetizing angle with beautiful lighting
+[top-right]: Side angle showing layers and depth
+[bottom-left]: Overhead/flat lay style shot
+[bottom-right]: Close-up detail showing texture and freshness
+
+CRITICAL: Make the food look ABSOLUTELY DELICIOUS. Fresh, vibrant colors. Professional food magazine quality."""
+
 
 def build_editorial_product_prompt(category: str, target: str = "사람") -> str:
     """카테고리/타겟별 화보 정물 프롬프트 생성"""
@@ -531,6 +572,8 @@ def build_editorial_product_prompt(category: str, target: str = "사람") -> str
         return PROMPT_PRODUCT_EDITORIAL_KIDS
     elif category_group == "펫용품" or target == "반려동물":
         return PROMPT_PRODUCT_EDITORIAL_PET
+    elif category_group == "식품" or target == "식품":
+        return PROMPT_PRODUCT_EDITORIAL_FOOD
     else:
         return PROMPT_PRODUCT_EDITORIAL_LUXURY
 
