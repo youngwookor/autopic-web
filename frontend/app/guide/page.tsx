@@ -2,8 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
-import { ChevronRight, Monitor, Globe, CreditCard, HelpCircle, Download, CheckCircle, ArrowRight, Folder, Zap, X } from 'lucide-react';
+import { ChevronRight, ChevronDown, Monitor, Globe, CreditCard, HelpCircle, Download, CheckCircle, ArrowRight, Folder, FolderOpen, FileImage, FileText, Zap, X, Image as ImageIcon, Play, Settings, Check } from 'lucide-react';
 
 // 로고 컴포넌트
 const AutoPicLogo = ({ className = "w-6 h-6" }: { className?: string }) => (
@@ -34,22 +33,97 @@ function ImageModal({ src, alt, onClose }: { src: string; alt: string; onClose: 
       >
         <X className="w-6 h-6 text-white" />
       </button>
-      <Image 
+      <img 
         src={src} 
         alt={alt} 
-        width={1200}
-        height={1200}
         className="max-w-full max-h-[90vh] object-contain rounded-lg"
       />
     </div>
   );
 }
 
+// Windows 탐색기 스타일 폴더 컴포넌트
+function WindowsExplorer({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white rounded-xl border border-zinc-300 overflow-hidden shadow-lg">
+      {/* 타이틀 바 */}
+      <div className="bg-gradient-to-b from-zinc-100 to-zinc-200 px-4 py-2 border-b border-zinc-300 flex items-center gap-2">
+        <FolderOpen className="w-4 h-4 text-yellow-600" />
+        <span className="text-sm font-medium text-zinc-700">{title}</span>
+      </div>
+      {/* 툴바 */}
+      <div className="bg-zinc-50 px-4 py-1.5 border-b border-zinc-200 flex items-center gap-4 text-xs text-zinc-500">
+        <span>파일</span>
+        <span>홈</span>
+        <span>보기</span>
+      </div>
+      {/* 경로 */}
+      <div className="bg-white px-4 py-2 border-b border-zinc-200 flex items-center gap-1">
+        <div className="flex items-center gap-1 px-2 py-1 bg-zinc-100 rounded text-xs text-zinc-600">
+          <Folder className="w-3 h-3" />
+          <span>{title}</span>
+        </div>
+      </div>
+      {/* 콘텐츠 */}
+      <div className="p-4 bg-white min-h-[200px]">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// 파일/폴더 아이템 컴포넌트
+function FileItem({ type, name, highlight, badge }: { type: 'folder' | 'image' | 'text' | 'output'; name: string; highlight?: boolean; badge?: string }) {
+  const icons = {
+    folder: <Folder className="w-10 h-10 text-yellow-500" />,
+    image: <FileImage className="w-10 h-10 text-blue-500" />,
+    text: <FileText className="w-10 h-10 text-zinc-400" />,
+    output: <FolderOpen className="w-10 h-10 text-green-500" />,
+  };
+
+  return (
+    <div className={`flex flex-col items-center p-3 rounded-lg hover:bg-blue-50 cursor-pointer transition-colors relative ${highlight ? 'bg-green-50 ring-2 ring-green-400' : ''}`}>
+      {icons[type]}
+      <span className={`text-xs mt-1 text-center ${highlight ? 'text-green-700 font-bold' : 'text-zinc-700'}`}>{name}</span>
+      {badge && (
+        <span className="absolute -top-1 -right-1 px-1.5 py-0.5 bg-green-500 text-white text-[10px] font-bold rounded">
+          {badge}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// 앱 목업 컴포넌트
+function AppMockup({ children, title }: { children: React.ReactNode; title: string }) {
+  return (
+    <div className="bg-zinc-800 rounded-xl overflow-hidden shadow-2xl border border-zinc-700">
+      {/* 타이틀 바 */}
+      <div className="bg-zinc-900 px-4 py-2 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <AutoPicLogo className="w-4 h-4 text-[#87D039]" />
+          <span className="text-white text-sm font-medium">{title}</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-full bg-zinc-600" />
+          <div className="w-3 h-3 rounded-full bg-zinc-600" />
+          <div className="w-3 h-3 rounded-full bg-zinc-600" />
+        </div>
+      </div>
+      {/* 콘텐츠 */}
+      <div className="p-4">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function GuidePage() {
-  const [activeMain, setActiveMain] = useState<MainSection>('web');
-  const [activeSub, setActiveSub] = useState<SubSection>('start');
+  const [activeMain, setActiveMain] = useState<MainSection>('desktop');
+  const [activeSub, setActiveSub] = useState<SubSection>('folder');
   const [isAnimating, setIsAnimating] = useState(false);
   const [modalImage, setModalImage] = useState<{ src: string; alt: string } | null>(null);
+  const [expandedFolder, setExpandedFolder] = useState<string | null>('product1');
 
   const mainSections: { id: MainSection; title: string; icon: React.ReactNode; subs: { id: SubSection; title: string }[] }[] = [
     {
@@ -224,11 +298,9 @@ export default function GuidePage() {
                             className="aspect-square rounded-xl overflow-hidden bg-zinc-100 cursor-zoom-in hover:ring-2 hover:ring-[#87D039] transition-all"
                             onClick={() => setModalImage({ src: item.before, alt: `${item.name} 원본` })}
                           >
-                            <Image 
+                            <img 
                               src={item.before} 
                               alt={`${item.name} 원본`}
-                              width={400}
-                              height={400}
                               className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                             />
                           </div>
@@ -243,11 +315,9 @@ export default function GuidePage() {
                             className="aspect-square rounded-xl overflow-hidden bg-zinc-100 cursor-zoom-in hover:ring-2 hover:ring-[#87D039] transition-all relative"
                             onClick={() => setModalImage({ src: item.still, alt: `${item.name} 정물컷` })}
                           >
-                            <Image 
+                            <img 
                               src={item.still} 
                               alt={`${item.name} 정물컷`}
-                              width={400}
-                              height={400}
                               className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                             />
                             <div className="absolute top-2 right-2 px-2 py-1 bg-black/60 backdrop-blur-sm text-white text-[10px] font-bold rounded-md">
@@ -265,11 +335,9 @@ export default function GuidePage() {
                             className="aspect-square rounded-xl overflow-hidden bg-zinc-100 cursor-zoom-in hover:ring-2 hover:ring-[#87D039] transition-all relative"
                             onClick={() => setModalImage({ src: item.model, alt: `${item.name} 모델컷` })}
                           >
-                            <Image 
+                            <img 
                               src={item.model} 
                               alt={`${item.name} 모델컷`}
-                              width={400}
-                              height={400}
                               className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                             />
                             <div className="absolute top-2 right-2 px-2 py-1 bg-black/60 backdrop-blur-sm text-white text-[10px] font-bold rounded-md">
@@ -295,7 +363,7 @@ export default function GuidePage() {
                     { step: 1, title: '회원가입', desc: '이메일 또는 Google 계정으로 가입', detail: 'autopic.app에서 간편하게 가입하세요' },
                     { step: 2, title: '크레딧 충전', desc: '마이페이지에서 크레딧 충전', detail: '이미지 1장 생성에 1~3 크레딧 소모' },
                     { step: 3, title: 'API 키 발급', desc: '데스크톱 앱 사용 시 필요', detail: '웹에서만 사용할 경우 생략 가능!', optional: true },
-                  ].map((item, index) => (
+                  ].map((item) => (
                     <div
                       key={item.step}
                       className="group bg-white rounded-2xl border border-zinc-200 p-6 hover:border-[#87D039]/50 hover:shadow-lg hover:shadow-[#87D039]/5 transition-all duration-300"
@@ -352,9 +420,7 @@ export default function GuidePage() {
                   {['업로드', '옵션 선택', 'AI 생성', '다운로드'].map((step, i) => (
                     <React.Fragment key={step}>
                       <div className="flex flex-col items-center flex-1">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-2 font-bold ${
-                          'bg-[#87D039] text-white'
-                        }`}>
+                        <div className="w-12 h-12 rounded-full flex items-center justify-center mb-2 font-bold bg-[#87D039] text-white">
                           {i + 1}
                         </div>
                         <span className="text-xs font-medium text-zinc-700 text-center">{step}</span>
@@ -384,36 +450,6 @@ export default function GuidePage() {
                       </div>
                     </div>
                   ))}
-                </div>
-              </div>
-
-              {/* 생성 결과 예시 */}
-              <div className="bg-white rounded-2xl border border-zinc-200 p-6 mb-8">
-                <h3 className="font-bold text-zinc-900 mb-4 text-center">생성 결과 예시</h3>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <div className="aspect-square rounded-xl overflow-hidden bg-zinc-100 cursor-zoom-in"
-                      onClick={() => setModalImage({ src: beforeAfterData[0].before, alt: '원본' })}>
-                      <Image src={beforeAfterData[0].before} alt="원본" width={300} height={300} className="w-full h-full object-cover hover:scale-105 transition-transform" />
-                    </div>
-                    <p className="text-center text-xs text-zinc-500">원본 이미지</p>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="aspect-square rounded-xl overflow-hidden bg-zinc-100 cursor-zoom-in relative"
-                      onClick={() => setModalImage({ src: beforeAfterData[0].still, alt: '정물컷' })}>
-                      <Image src={beforeAfterData[0].still} alt="정물컷" width={300} height={300} className="w-full h-full object-cover hover:scale-105 transition-transform" />
-                      <div className="absolute top-2 right-2 px-2 py-1 bg-[#87D039] text-white text-[10px] font-bold rounded">AI</div>
-                    </div>
-                    <p className="text-center text-xs text-zinc-500">정물컷 결과</p>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="aspect-square rounded-xl overflow-hidden bg-zinc-100 cursor-zoom-in relative"
-                      onClick={() => setModalImage({ src: beforeAfterData[0].model, alt: '모델컷' })}>
-                      <Image src={beforeAfterData[0].model} alt="모델컷" width={300} height={300} className="w-full h-full object-cover hover:scale-105 transition-transform" />
-                      <div className="absolute top-2 right-2 px-2 py-1 bg-[#87D039] text-white text-[10px] font-bold rounded">AI</div>
-                    </div>
-                    <p className="text-center text-xs text-zinc-500">모델컷 결과</p>
-                  </div>
                 </div>
               </div>
 
@@ -483,177 +519,268 @@ export default function GuidePage() {
             </div>
           )}
 
-          {/* ==================== 폴더 구조 ==================== */}
+          {/* ==================== 폴더 구조 (완전 새 디자인) ==================== */}
           {activeSub === 'folder' && (
-            <div className="max-w-2xl mx-auto">
+            <div className="max-w-4xl mx-auto">
               <div className="text-center mb-10">
                 <span className="inline-block px-3 py-1 bg-[#87D039]/10 text-[#87D039] text-xs font-bold rounded-full mb-4">
-                  중요
+                  가장 중요!
                 </span>
-                <h2 className="text-2xl font-bold text-zinc-900 mb-2">폴더 구조</h2>
-                <p className="text-zinc-500">일괄 처리를 위한 폴더 구성 방법</p>
+                <h2 className="text-2xl font-bold text-zinc-900 mb-2">폴더 구조 이해하기</h2>
+                <p className="text-zinc-500">일괄 처리를 위한 폴더 구성 방법을 알아보세요</p>
               </div>
 
-              {/* 폴더 구조 시각화 */}
-              <div className="bg-zinc-900 rounded-2xl p-6 mb-8 font-mono text-sm">
-                <div className="text-zinc-300 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Folder className="w-4 h-4 text-yellow-400" />
-                    <span className="text-white font-bold">작업폴더/</span>
+              {/* Windows 탐색기 스타일 시각화 */}
+              <div className="mb-8">
+                <WindowsExplorer title="작업폴더">
+                  <div className="grid grid-cols-4 gap-4">
+                    {/* 상품 폴더들 */}
+                    <div 
+                      className={`cursor-pointer ${expandedFolder === 'product1' ? 'col-span-4' : ''}`}
+                      onClick={() => setExpandedFolder(expandedFolder === 'product1' ? null : 'product1')}
+                    >
+                      {expandedFolder === 'product1' ? (
+                        <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                          <div className="flex items-center gap-2 mb-4 pb-3 border-b border-blue-200">
+                            <FolderOpen className="w-6 h-6 text-yellow-500" />
+                            <span className="font-bold text-zinc-800">상품코드_001</span>
+                            <ChevronDown className="w-4 h-4 text-zinc-400 ml-auto" />
+                          </div>
+                          <div className="grid grid-cols-4 gap-3">
+                            <FileItem type="image" name="5.jpg" highlight badge="대표" />
+                            <FileItem type="image" name="6.jpg" />
+                            <FileItem type="text" name="상품정보.txt" />
+                            <FileItem type="output" name="output" highlight badge="결과" />
+                          </div>
+                        </div>
+                      ) : (
+                        <FileItem type="folder" name="상품코드_001" />
+                      )}
+                    </div>
+                    {expandedFolder !== 'product1' && (
+                      <>
+                        <FileItem type="folder" name="상품코드_002" />
+                        <FileItem type="folder" name="상품코드_003" />
+                        <FileItem type="folder" name="..." />
+                      </>
+                    )}
                   </div>
-                  <div className="ml-6 border-l border-zinc-700 pl-4 space-y-2">
+                </WindowsExplorer>
+              </div>
+
+              {/* 파일 규칙 설명 */}
+              <div className="grid md:grid-cols-3 gap-4 mb-8">
+                <div className="bg-white rounded-xl border-2 border-[#87D039] p-5">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-12 h-12 bg-[#87D039] rounded-xl flex items-center justify-center">
+                      <FileImage className="w-6 h-6 text-white" />
+                    </div>
                     <div>
-                      <div className="flex items-center gap-2">
-                        <Folder className="w-4 h-4 text-yellow-400" />
-                        <span>상품코드1/</span>
-                      </div>
-                      <div className="ml-6 border-l border-zinc-700 pl-4 mt-2 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[#87D039]">●</span>
-                          <span className="text-[#87D039] font-bold">5.jpg</span>
-                          <span className="text-zinc-500 text-xs ml-2">대표 이미지</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-zinc-500">○</span>
-                          <span className="text-zinc-400">6.jpg</span>
-                          <span className="text-zinc-600 text-xs ml-2">보조 (선택)</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-zinc-500">○</span>
-                          <span className="text-zinc-400">*.txt</span>
-                          <span className="text-zinc-600 text-xs ml-2">상품정보 (선택)</span>
-                        </div>
-                      </div>
+                      <h4 className="font-bold text-zinc-900">5.jpg</h4>
+                      <span className="text-[#87D039] text-xs font-bold">필수 · 대표 이미지</span>
                     </div>
-                    <div className="flex items-center gap-2 text-zinc-500">
-                      <Folder className="w-4 h-4 text-zinc-600" />
-                      <span>상품코드2/</span>
-                    </div>
-                    <div className="text-zinc-600">└── ...</div>
                   </div>
+                  <p className="text-zinc-600 text-sm">AI 분석의 기준이 되는 <strong>정면 이미지</strong>입니다. 상품이 가장 잘 보이는 사진을 사용하세요.</p>
+                </div>
+
+                <div className="bg-white rounded-xl border border-zinc-200 p-5">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-12 h-12 bg-zinc-200 rounded-xl flex items-center justify-center">
+                      <FileImage className="w-6 h-6 text-zinc-500" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-zinc-900">6.jpg</h4>
+                      <span className="text-zinc-500 text-xs font-bold">선택 · 보조 이미지</span>
+                    </div>
+                  </div>
+                  <p className="text-zinc-600 text-sm">측면, 후면 등 <strong>추가 참고용</strong> 이미지입니다. 없어도 생성 가능합니다.</p>
+                </div>
+
+                <div className="bg-white rounded-xl border border-zinc-200 p-5">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-12 h-12 bg-zinc-200 rounded-xl flex items-center justify-center">
+                      <FileText className="w-6 h-6 text-zinc-500" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-zinc-900">*.txt</h4>
+                      <span className="text-zinc-500 text-xs font-bold">선택 · 상품 정보</span>
+                    </div>
+                  </div>
+                  <p className="text-zinc-600 text-sm"><strong>파일명은 자유</strong>입니다. info.txt, 상품.txt, product.txt 등 원하는 이름 사용 가능!</p>
                 </div>
               </div>
 
-              {/* 파일 설명 */}
-              <div className="grid gap-3 mb-8">
-                <div className="flex items-center gap-4 p-4 bg-[#87D039]/5 rounded-xl border border-[#87D039]/20">
-                  <div className="w-12 h-12 bg-[#87D039] rounded-xl flex items-center justify-center text-white font-bold">5</div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-bold text-zinc-900">대표 이미지</h4>
-                      <span className="px-2 py-0.5 bg-[#87D039]/20 text-[#87D039] text-xs font-bold rounded">권장</span>
-                    </div>
-                    <p className="text-zinc-500 text-sm">AI 분석의 기준이 되는 정면 이미지</p>
+              {/* 자동 정렬 기능 */}
+              <div className="bg-gradient-to-r from-blue-50 to-cyan-50 rounded-2xl p-6 border border-blue-200">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center shrink-0">
+                    <Zap className="w-6 h-6 text-white" />
                   </div>
-                </div>
-                <div className="flex items-center gap-4 p-4 bg-white rounded-xl border border-zinc-200">
-                  <div className="w-12 h-12 bg-zinc-200 rounded-xl flex items-center justify-center text-zinc-500 font-bold">6</div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-bold text-zinc-900">보조 이미지</h4>
-                      <span className="px-2 py-0.5 bg-zinc-100 text-zinc-500 text-xs font-bold rounded">선택</span>
+                  <div>
+                    <h4 className="font-bold text-blue-900 mb-2 text-lg">💡 파일명 규칙이 없어도 OK!</h4>
+                    <p className="text-blue-800 mb-4">
+                      5.jpg, 6.jpg 파일이 없어도 괜찮아요. 폴더 내 이미지를 <strong>파일명 순서로 자동 정렬</strong>해서 사용합니다.
+                    </p>
+                    <div className="bg-white rounded-xl p-4 border border-blue-200">
+                      <div className="flex items-center gap-4 text-sm">
+                        <div className="flex items-center gap-2">
+                          <FileImage className="w-5 h-5 text-blue-500" />
+                          <span className="text-zinc-600">IMG_001.jpg</span>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-zinc-400" />
+                        <span className="px-2 py-1 bg-[#87D039]/10 text-[#87D039] font-bold rounded">대표 이미지로 사용</span>
+                      </div>
+                      <div className="flex items-center gap-4 text-sm mt-2">
+                        <div className="flex items-center gap-2">
+                          <FileImage className="w-5 h-5 text-zinc-400" />
+                          <span className="text-zinc-600">IMG_002.jpg</span>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-zinc-400" />
+                        <span className="px-2 py-1 bg-zinc-100 text-zinc-600 font-medium rounded">보조 이미지로 사용</span>
+                      </div>
                     </div>
-                    <p className="text-zinc-500 text-sm">측면/후면 등 추가 참고용</p>
                   </div>
-                </div>
-                <div className="flex items-center gap-4 p-4 bg-white rounded-xl border border-zinc-200">
-                  <div className="w-12 h-12 bg-zinc-200 rounded-xl flex items-center justify-center text-zinc-500 font-bold text-xs">TXT</div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-bold text-zinc-900">상품 정보</h4>
-                      <span className="px-2 py-0.5 bg-zinc-100 text-zinc-500 text-xs font-bold rounded">선택</span>
-                    </div>
-                    <p className="text-zinc-500 text-sm">파일명 자유 (info.txt, 상품.txt 등 OK)</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-5 bg-blue-50 rounded-xl border border-blue-200">
-                <h4 className="font-bold text-blue-900 mb-2 flex items-center gap-2">
-                  <Zap className="w-4 h-4" />
-                  자동 정렬 기능
-                </h4>
-                <p className="text-blue-800 text-sm mb-3">
-                  5.jpg, 6.jpg가 없어도 괜찮아요! 폴더 내 이미지를 파일명 순서로 자동 정렬합니다.
-                </p>
-                <div className="bg-white rounded-lg p-3 font-mono text-xs text-zinc-600">
-                  IMG_001.jpg → <span className="text-[#87D039] font-bold">대표 이미지</span><br />
-                  IMG_002.jpg → <span className="text-zinc-500">보조 이미지</span>
                 </div>
               </div>
             </div>
           )}
 
-          {/* ==================== 일괄 처리 ==================== */}
+          {/* ==================== 일괄 처리 (완전 새 디자인) ==================== */}
           {activeSub === 'batch' && (
-            <div className="max-w-2xl mx-auto">
+            <div className="max-w-4xl mx-auto">
               <div className="text-center mb-10">
                 <span className="inline-block px-3 py-1 bg-[#87D039]/10 text-[#87D039] text-xs font-bold rounded-full mb-4">
-                  자동화
+                  대량 작업
                 </span>
-                <h2 className="text-2xl font-bold text-zinc-900 mb-2">일괄 처리</h2>
-                <p className="text-zinc-500">수백 개 상품을 한 번에 처리하세요</p>
+                <h2 className="text-2xl font-bold text-zinc-900 mb-2">일괄 처리 사용법</h2>
+                <p className="text-zinc-500">수백 개 상품을 한 번에 처리하는 방법</p>
               </div>
 
-              <div className="flex items-center justify-center gap-2 mb-10 flex-wrap">
-                {['폴더 선택', '상품 확인', '옵션', '처리', '완료'].map((step, i) => (
-                  <React.Fragment key={step}>
-                    <div className={`px-4 py-2 rounded-full text-sm font-medium ${
-                      i === 4 ? 'bg-[#87D039] text-white' : 'bg-white border border-zinc-200 text-zinc-600'
-                    }`}>
-                      {step}
+              {/* 앱 목업 - 처리 화면 */}
+              <div className="mb-10">
+                <AppMockup title="AUTOPIC - 일괄 처리">
+                  <div className="space-y-4">
+                    {/* 상태 표시 */}
+                    <div className="flex items-center justify-between bg-zinc-700 rounded-lg p-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse" />
+                        <span className="text-white text-sm">처리 중...</span>
+                      </div>
+                      <span className="text-[#87D039] font-mono font-bold">47 / 100</span>
                     </div>
-                    {i < 4 && <ChevronRight className="w-4 h-4 text-zinc-300" />}
-                  </React.Fragment>
-                ))}
+
+                    {/* 진행률 바 */}
+                    <div className="bg-zinc-700 rounded-full h-3 overflow-hidden">
+                      <div className="bg-gradient-to-r from-[#87D039] to-[#6BBF2A] h-full rounded-full transition-all" style={{ width: '47%' }} />
+                    </div>
+
+                    {/* 옵션 표시 */}
+                    <div className="grid grid-cols-4 gap-2">
+                      {[
+                        { name: '기본 정물', active: true },
+                        { name: '기본 모델', active: true },
+                        { name: '화보 정물', active: false },
+                        { name: '화보 모델', active: false },
+                      ].map((opt) => (
+                        <div 
+                          key={opt.name}
+                          className={`p-2 rounded-lg text-center text-xs font-medium ${
+                            opt.active 
+                              ? 'bg-[#87D039]/20 text-[#87D039] border border-[#87D039]' 
+                              : 'bg-zinc-700 text-zinc-400'
+                          }`}
+                        >
+                          {opt.active && <Check className="w-3 h-3 inline mr-1" />}
+                          {opt.name}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* 현재 처리 중인 상품 */}
+                    <div className="bg-zinc-700 rounded-lg p-3 flex items-center gap-3">
+                      <div className="w-12 h-12 bg-zinc-600 rounded-lg flex items-center justify-center">
+                        <ImageIcon className="w-6 h-6 text-zinc-400" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-white text-sm font-medium">상품코드_047</p>
+                        <p className="text-zinc-400 text-xs">기본 모델 생성 중...</p>
+                      </div>
+                      <div className="w-6 h-6 border-2 border-[#87D039] border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  </div>
+                </AppMockup>
               </div>
 
+              {/* 처리 단계 */}
               <div className="bg-white rounded-2xl border border-zinc-200 p-6 mb-8">
-                <h3 className="font-bold text-zinc-900 mb-4">생성 옵션</h3>
-                <div className="grid grid-cols-2 gap-3">
+                <h3 className="font-bold text-zinc-900 mb-6 text-center">처리 과정</h3>
+                <div className="flex items-center justify-between">
                   {[
-                    { name: '기본 정물', desc: '깔끔한 배경' },
-                    { name: '기본 모델', desc: '모델 착용샷' },
-                    { name: '화보 정물', desc: '감성 분위기' },
-                    { name: '화보 모델', desc: '화보 스타일' },
-                  ].map((opt) => (
-                    <div key={opt.name} className="p-4 bg-zinc-50 rounded-xl">
-                      <p className="font-bold text-zinc-900 text-sm">{opt.name}</p>
-                      <p className="text-zinc-500 text-xs">{opt.desc}</p>
-                    </div>
+                    { icon: <Folder className="w-5 h-5" />, label: '폴더 선택', desc: '작업 폴더 지정' },
+                    { icon: <FileImage className="w-5 h-5" />, label: '상품 확인', desc: '자동 인식' },
+                    { icon: <Settings className="w-5 h-5" />, label: '옵션 선택', desc: '생성 타입' },
+                    { icon: <Play className="w-5 h-5" />, label: '처리 시작', desc: '자동 처리' },
+                    { icon: <Check className="w-5 h-5" />, label: '완료', desc: 'output 폴더' },
+                  ].map((step, i) => (
+                    <React.Fragment key={step.label}>
+                      <div className="flex flex-col items-center text-center">
+                        <div className="w-12 h-12 bg-[#87D039]/10 text-[#87D039] rounded-xl flex items-center justify-center mb-2">
+                          {step.icon}
+                        </div>
+                        <span className="text-xs font-bold text-zinc-900">{step.label}</span>
+                        <span className="text-[10px] text-zinc-500">{step.desc}</span>
+                      </div>
+                      {i < 4 && <ChevronRight className="w-5 h-5 text-zinc-300 mx-1" />}
+                    </React.Fragment>
                   ))}
                 </div>
               </div>
 
-              <div className="bg-zinc-900 rounded-2xl p-6 mb-8 font-mono text-sm">
-                <p className="text-zinc-400 text-xs mb-3">처리 결과</p>
-                <div className="text-zinc-300 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Folder className="w-4 h-4 text-yellow-400" />
-                    <span>상품폴더/</span>
+              {/* 결과 폴더 구조 */}
+              <div className="mb-8">
+                <h3 className="font-bold text-zinc-900 mb-4 text-center">처리 결과</h3>
+                <WindowsExplorer title="상품코드_001">
+                  <div className="grid grid-cols-5 gap-3">
+                    <FileItem type="image" name="5.jpg" />
+                    <FileItem type="image" name="6.jpg" />
+                    <FileItem type="text" name="info.txt" />
+                    <div className="col-span-2 bg-green-50 rounded-lg p-3 border-2 border-green-400">
+                      <div className="flex items-center gap-2 mb-2">
+                        <FolderOpen className="w-5 h-5 text-green-500" />
+                        <span className="font-bold text-green-700 text-sm">output</span>
+                        <span className="px-1.5 py-0.5 bg-green-500 text-white text-[10px] rounded">NEW</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <div className="flex items-center gap-1 text-xs text-green-600">
+                          <FileImage className="w-3 h-3" /> 0.jpg
+                        </div>
+                        <div className="flex items-center gap-1 text-xs text-green-600">
+                          <FileImage className="w-3 h-3" /> 1.jpg
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="ml-6 border-l border-zinc-700 pl-4 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-zinc-500">●</span>
-                      <span className="text-zinc-400">5.jpg</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Folder className="w-4 h-4 text-[#87D039]" />
-                      <span className="text-[#87D039] font-bold">output/</span>
-                      <span className="text-zinc-500 text-xs ml-2">← 생성 결과</span>
-                    </div>
-                    <div className="ml-6 text-zinc-400 space-y-1">
-                      <div>0.jpg <span className="text-zinc-600">(정물)</span></div>
-                      <div>1.jpg <span className="text-zinc-600">(모델)</span></div>
-                    </div>
-                  </div>
-                </div>
+                </WindowsExplorer>
               </div>
 
-              <div className="p-5 bg-zinc-100 rounded-xl">
-                <p className="text-zinc-700 text-sm">
-                  <strong className="text-zinc-900">💾 자동 저장:</strong> 중단해도 다음에 이어서 처리할 수 있어요
-                </p>
+              {/* 팁 */}
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="p-5 bg-blue-50 rounded-xl border border-blue-200">
+                  <h4 className="font-bold text-blue-900 mb-2 flex items-center gap-2">
+                    💾 자동 저장
+                  </h4>
+                  <p className="text-blue-800 text-sm">
+                    처리 중 중단해도 진행 상태가 자동 저장됩니다. 다음에 이어서 처리할 수 있어요!
+                  </p>
+                </div>
+                <div className="p-5 bg-purple-50 rounded-xl border border-purple-200">
+                  <h4 className="font-bold text-purple-900 mb-2 flex items-center gap-2">
+                    📊 엑셀 리포트
+                  </h4>
+                  <p className="text-purple-800 text-sm">
+                    처리 완료 후 작업 폴더에 결과 엑셀 파일이 자동 생성됩니다.
+                  </p>
+                </div>
               </div>
             </div>
           )}
