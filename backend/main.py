@@ -2000,6 +2000,97 @@ async def verify_sms_code(request: SMSVerifyRequest):
 
 
 # ============================================================================
+# 문의하기 이메일 API
+# ============================================================================
+
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+ZOHO_EMAIL = os.getenv("ZOHO_EMAIL", "support@autopic.app")
+ZOHO_PASSWORD = os.getenv("ZOHO_PASSWORD", "")
+
+
+class ContactRequest(BaseModel):
+    name: str
+    email: str
+    message: str
+
+
+@app.post("/api/contact")
+async def send_contact_email(request: ContactRequest):
+    """문의하기 이메일 발송"""
+    if not ZOHO_PASSWORD:
+        # 비밀번호 미설정 시 성공 처리 (개발 환경)
+        print(f"문의 접수 (이메일 미발송): {request.name} / {request.email}")
+        print(f"내용: {request.message}")
+        return {"success": True, "message": "문의가 접수되었습니다"}
+    
+    try:
+        # 이메일 구성
+        msg = MIMEMultipart()
+        msg['From'] = ZOHO_EMAIL
+        msg['To'] = ZOHO_EMAIL
+        msg['Subject'] = f"[AUTOPIC 문의] {request.name}님의 문의"
+        
+        body = f"""AUTOPIC 웹사이트 문의가 접수되었습니다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+■ 이름: {request.name}
+■ 이메일: {request.email}
+
+■ 문의 내용:
+{request.message}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+이 메일은 AUTOPIC 웹사이트에서 자동 발송되었습니다.
+"""
+        
+        msg.attach(MIMEText(body, 'plain', 'utf-8'))
+        
+        # Zoho SMTP 서버로 발송
+        with smtplib.SMTP('smtp.zoho.com', 587) as server:
+            server.starttls()
+            server.login(ZOHO_EMAIL, ZOHO_PASSWORD)
+            server.send_message(msg)
+        
+        # 자동 회신 (고객에게)
+        reply_msg = MIMEMultipart()
+        reply_msg['From'] = ZOHO_EMAIL
+        reply_msg['To'] = request.email
+        reply_msg['Subject'] = "[AUTOPIC] 문의가 접수되었습니다"
+        
+        reply_body = f"""안녕하세요, {request.name}님!
+
+AUTOPIC에 문의해 주셔서 감사합니다.
+
+접수하신 문의 내용을 확인 중이며, 영업일 기준 1-2일 내에 답변 드리겠습니다.
+
+감사합니다.
+AUTOPIC 팀 드림
+
+---
+접수된 문의 내용:
+{request.message}
+"""
+        
+        reply_msg.attach(MIMEText(reply_body, 'plain', 'utf-8'))
+        
+        with smtplib.SMTP('smtp.zoho.com', 587) as server:
+            server.starttls()
+            server.login(ZOHO_EMAIL, ZOHO_PASSWORD)
+            server.send_message(reply_msg)
+        
+        return {"success": True, "message": "문의가 접수되었습니다"}
+        
+    except Exception as e:
+        print(f"이메일 발송 오류: {e}")
+        return {"success": False, "error": "문의 발송 중 오류가 발생했습니다"}
+
+
+# ============================================================================
 # 서버 실행
 # ============================================================================
 

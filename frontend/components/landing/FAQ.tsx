@@ -1,11 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, Send } from 'lucide-react';
+import { ChevronDown, Send, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function FAQ() {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    message: ''
+  });
   
   const questions = [
     { 
@@ -26,9 +32,46 @@ export default function FAQ() {
     }
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast.success('문의가 접수되었습니다');
+    
+    if (!formData.name.trim() || !formData.email.trim() || !formData.message.trim()) {
+      toast.error('모든 필드를 입력해주세요');
+      return;
+    }
+    
+    // 이메일 형식 검증
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      toast.error('올바른 이메일 주소를 입력해주세요');
+      return;
+    }
+    
+    setIsSubmitting(true);
+    
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/contact`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success('문의가 접수되었습니다. 빠른 시일 내에 답변 드리겠습니다.');
+        setFormData({ name: '', email: '', message: '' });
+      } else {
+        toast.error(data.error || '문의 접수에 실패했습니다');
+      }
+    } catch (error) {
+      console.error('Contact form error:', error);
+      toast.error('네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -65,22 +108,42 @@ export default function FAQ() {
             <form className="space-y-3 md:space-y-4" onSubmit={handleSubmit}>
               <input 
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-lg md:rounded-xl px-3 md:px-4 py-2.5 md:py-3 text-white text-sm md:text-base focus:outline-none focus:border-[#87D039] transition-colors" 
-                placeholder="성함" 
+                placeholder="성함"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                disabled={isSubmitting}
               />
               <input 
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-lg md:rounded-xl px-3 md:px-4 py-2.5 md:py-3 text-white text-sm md:text-base focus:outline-none focus:border-[#87D039] transition-colors" 
-                placeholder="이메일" 
+                placeholder="이메일"
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                disabled={isSubmitting}
               />
               <textarea 
                 rows={4} 
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-lg md:rounded-xl px-3 md:px-4 py-2.5 md:py-3 text-white text-sm md:text-base focus:outline-none focus:border-[#87D039] transition-colors resize-none" 
-                placeholder="문의 내용" 
+                placeholder="문의 내용"
+                value={formData.message}
+                onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                disabled={isSubmitting}
               />
               <button 
                 type="submit"
-                className="w-full py-3 md:py-4 bg-[#87D039] text-black font-bold rounded-lg md:rounded-xl hover:bg-lime-400 transition flex items-center justify-center gap-2 text-sm md:text-base"
+                disabled={isSubmitting}
+                className="w-full py-3 md:py-4 bg-[#87D039] text-black font-bold rounded-lg md:rounded-xl hover:bg-lime-400 transition flex items-center justify-center gap-2 text-sm md:text-base disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                보내기 <Send size={16} className="md:w-[18px] md:h-[18px]" />
+                {isSubmitting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin md:w-[18px] md:h-[18px]" />
+                    전송 중...
+                  </>
+                ) : (
+                  <>
+                    보내기 <Send size={16} className="md:w-[18px] md:h-[18px]" />
+                  </>
+                )}
               </button>
             </form>
           </div>

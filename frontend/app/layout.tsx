@@ -4,6 +4,7 @@ import ToastProvider from "@/components/ToastProvider";
 import AuthProvider from "@/components/AuthProvider";
 import InAppBrowserDetector from "@/components/InAppBrowserDetector";
 import Analytics from "@/components/Analytics";
+import ChannelTalk from "@/components/ChannelTalk";
 
 const siteUrl = 'https://autopic.app';
 
@@ -168,6 +169,9 @@ export default function RootLayout({
       <body className="antialiased">
         {/* Analytics (GA4 + Meta Pixel) */}
         <Analytics />
+        
+        {/* 채널톡 채팅 위젯 */}
+        <ChannelTalk />
         
         <ToastProvider />
         <AuthProvider>
