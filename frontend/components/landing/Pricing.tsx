@@ -116,11 +116,14 @@ export default function Pricing() {
   const handleSubscribe = (plan: string) => {
     if (plan === 'free') {
       if (!isAuthenticated) {
-        toast.error('로그인이 필요합니다');
-        router.push('/login');
+        // 비로그인: 회원가입 페이지로 이동
+        toast.success('회원가입하고 무료 5크레딧을 받으세요!');
+        router.push('/register');
         return;
       }
-      toast.success('회원가입 시 5크레딧이 지급됩니다!');
+      // 로그인 상태: 스튜디오로 이동
+      toast.success('스튜디오에서 이미지를 생성해보세요!');
+      document.getElementById('studio')?.scrollIntoView({ behavior: 'smooth' });
       return;
     }
     toast('구독 결제 기능은 준비 중입니다', { icon: '🚧' });

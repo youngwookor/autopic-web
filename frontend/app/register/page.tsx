@@ -250,7 +250,8 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
-      await signUp(email, password, name);
+      const phoneNumbers = phone.replace(/[^\d]/g, '');
+      await signUp(email, password, name, phoneNumbers);
       // Analytics: 회원가입 추적
       trackSignUp('email');
       toast.success('회원가입 완료! 이메일을 확인해주세요.');

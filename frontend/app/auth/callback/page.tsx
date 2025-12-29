@@ -73,6 +73,7 @@ export default function AuthCallbackPage() {
           id: user.id,
           email: user.email,
           name: user.user_metadata?.full_name || user.user_metadata?.name || user.user_metadata?.nickname || user.email?.split('@')[0],
+          phone: user.user_metadata?.phone || null,
           credits: 5,
           tier: 'free',
         };

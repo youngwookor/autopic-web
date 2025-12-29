@@ -1919,6 +1919,20 @@ async def send_verification_sms(request: SMSSendRequest):
     """인증번호 SMS 발송"""
     phone = request.phone.replace("-", "").replace(" ", "")
     
+    # 이미 가입된 번호인지 확인 (profiles 테이블)
+    try:
+        existing = (
+            supabase.table("profiles")
+            .select("id")
+            .eq("phone", phone)
+            .execute()
+        )
+        if existing.data and len(existing.data) > 0:
+            return {"success": False, "error": "이미 가입된 휴대폰 번호입니다"}
+    except Exception as e:
+        print(f"번호 중복 체크 오류: {e}")
+        # 체크 실패해도 진행 (테이블에 phone 컬럼이 없을 수 있음)
+    
     # 6자리 인증번호 생성
     code = str(secrets.randbelow(900000) + 100000)
     
