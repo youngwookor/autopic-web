@@ -180,6 +180,12 @@ export default function Navbar({ isScrolled: propIsScrolled }: NavbarProps) {
                 >
                   요금제
                 </button>
+                <Link
+                  href="/guide"
+                  className="text-sm font-medium text-zinc-600 hover:text-black transition-colors"
+                >
+                  가이드
+                </Link>
                 
                 {/* Credits Badge */}
                 <Link 
@@ -234,6 +240,12 @@ export default function Navbar({ isScrolled: propIsScrolled }: NavbarProps) {
                 >
                   요금제
                 </button>
+                <Link
+                  href="/guide"
+                  className="text-sm font-medium text-zinc-600 hover:text-black transition-colors"
+                >
+                  가이드
+                </Link>
                 <Link
                   href="/login"
                   className="bg-zinc-900 text-white px-6 py-2.5 rounded-full text-sm font-medium hover:bg-zinc-800 transition-colors"
@@ -327,6 +339,14 @@ export default function Navbar({ isScrolled: propIsScrolled }: NavbarProps) {
                   <span className="font-medium">요금제</span>
                 </button>
                 <Link 
+                  href="/guide"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="flex items-center gap-4 w-full px-4 py-3.5 rounded-xl hover:bg-zinc-50 transition"
+                >
+                  <HelpCircle size={20} className="text-zinc-500" />
+                  <span className="font-medium">가이드</span>
+                </Link>
+                <Link 
                   href="/mypage"
                   onClick={() => setIsMenuOpen(false)}
                   className="flex items-center gap-4 w-full px-4 py-3.5 rounded-xl hover:bg-zinc-50 transition"
@@ -379,6 +399,14 @@ export default function Navbar({ isScrolled: propIsScrolled }: NavbarProps) {
                   <CreditCard size={20} className="text-zinc-500" />
                   <span className="font-medium">요금제</span>
                 </button>
+                <Link 
+                  href="/guide"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="flex items-center gap-4 w-full px-4 py-3.5 rounded-xl hover:bg-zinc-50 transition"
+                >
+                  <HelpCircle size={20} className="text-zinc-500" />
+                  <span className="font-medium">가이드</span>
+                </Link>
               </div>
 
               {/* Login Button */}
