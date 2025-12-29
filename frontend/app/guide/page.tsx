@@ -119,8 +119,8 @@ function AppMockup({ children, title }: { children: React.ReactNode; title: stri
 }
 
 export default function GuidePage() {
-  const [activeMain, setActiveMain] = useState<MainSection>('desktop');
-  const [activeSub, setActiveSub] = useState<SubSection>('folder');
+  const [activeMain, setActiveMain] = useState<MainSection>('web');
+  const [activeSub, setActiveSub] = useState<SubSection>('start');
   const [isAnimating, setIsAnimating] = useState(false);
   const [modalImage, setModalImage] = useState<{ src: string; alt: string } | null>(null);
   const [expandedFolder, setExpandedFolder] = useState<string | null>('product1');

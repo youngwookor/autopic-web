@@ -1,11 +1,58 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ArrowRight, Play } from 'lucide-react';
+import { ArrowRight, Play, X } from 'lucide-react';
+
+// 유튜브 모달 컴포넌트
+function VideoModal({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    // ESC 키로 닫기
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleEsc);
+    // 스크롤 방지
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', handleEsc);
+      document.body.style.overflow = 'unset';
+    };
+  }, [onClose]);
+
+  return (
+    <div 
+      className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      {/* 닫기 버튼 */}
+      <button 
+        onClick={onClose}
+        className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors z-10"
+      >
+        <X className="w-6 h-6 text-white" />
+      </button>
+
+      {/* 유튜브 쇼츠 (세로 영상) */}
+      <div 
+        className="relative w-full max-w-[350px] aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <iframe
+          src="https://www.youtube.com/embed/K9qcMsMRYfU?autoplay=1&rel=0&modestbranding=1"
+          title="AUTOPIC 데모 영상"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          className="absolute inset-0 w-full h-full"
+        />
+      </div>
+    </div>
+  );
+}
 
 export default function Hero() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [showVideo, setShowVideo] = useState(false);
 
   const products = [
     { image: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=800&q=80", name: "Nike Air", category: "Sneakers" },
@@ -24,6 +71,9 @@ export default function Hero() {
 
   return (
     <section className="relative bg-[#fafafa] overflow-hidden">
+      {/* 유튜브 모달 */}
+      {showVideo && <VideoModal onClose={() => setShowVideo(false)} />}
+
       {/* Subtle Grid Background */}
       <div 
         className="absolute inset-0 opacity-[0.4]"
@@ -103,8 +153,11 @@ export default function Hero() {
               무료로 시작하기
               <ArrowRight size={16} />
             </button>
-            <button className="w-full flex items-center justify-center gap-2 text-zinc-600 font-medium text-sm py-2">
-              <div className="w-8 h-8 rounded-full bg-white shadow-md flex items-center justify-center">
+            <button 
+              onClick={() => setShowVideo(true)}
+              className="w-full flex items-center justify-center gap-2 text-zinc-600 font-medium text-sm py-2 hover:text-zinc-900 transition-colors"
+            >
+              <div className="w-8 h-8 rounded-full bg-white shadow-md flex items-center justify-center hover:shadow-lg transition-shadow">
                 <Play size={12} fill="currentColor" />
               </div>
               데모 보기
@@ -174,8 +227,11 @@ export default function Hero() {
                   무료로 시작하기
                   <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
                 </button>
-                <button className="flex items-center gap-3 text-zinc-600 font-medium hover:text-zinc-900 transition-colors px-4">
-                  <div className="w-12 h-12 rounded-full bg-white shadow-lg flex items-center justify-center hover:shadow-xl transition-shadow">
+                <button 
+                  onClick={() => setShowVideo(true)}
+                  className="flex items-center gap-3 text-zinc-600 font-medium hover:text-zinc-900 transition-colors px-4"
+                >
+                  <div className="w-12 h-12 rounded-full bg-white shadow-lg flex items-center justify-center hover:shadow-xl transition-shadow hover:scale-105">
                     <Play size={16} fill="currentColor" />
                   </div>
                   데모 보기
