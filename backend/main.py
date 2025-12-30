@@ -140,7 +140,9 @@ current_key_index = 0
 def get_gemini_client():
     global current_key_index
     if not GEMINI_API_KEYS or not GEMINI_API_KEYS[0]:
-        raise HTTPException(status_code=500, detail="Gemini API 키가 설정되지 않았습니다")
+        raise HTTPException(
+            status_code=500, detail="Gemini API 키가 설정되지 않았습니다"
+        )
     key = GEMINI_API_KEYS[current_key_index % len(GEMINI_API_KEYS)]
     return genai.Client(api_key=key)
 
@@ -269,32 +271,34 @@ TARGET_TO_CATEGORY_GROUP = {
 }
 
 
-def get_category_group(category1: str, category2: str = "", target: str = "사람") -> str:
+def get_category_group(
+    category1: str, category2: str = "", target: str = "사람"
+) -> str:
     """카테고리 그룹 결정 (한글/영문 모두 지원 + TARGET 기반 오버라이드)"""
-    
+
     # 1. TARGET 기반 오버라이드 (최우선)
     if target in TARGET_TO_CATEGORY_GROUP and TARGET_TO_CATEGORY_GROUP[target]:
         return TARGET_TO_CATEGORY_GROUP[target]
-    
+
     category1 = str(category1).strip("[]") if category1 else ""
     category2 = str(category2).strip("[]") if category2 else ""
-    
+
     # 2. 영문 카테고리 체크
     if category1.lower() in CATEGORY_EN_TO_GROUP:
         return CATEGORY_EN_TO_GROUP[category1.lower()]
-    
+
     # 3. 한글 1차 카테고리 체크
     if category1 in CATEGORY1_TO_GROUP:
         return CATEGORY1_TO_GROUP[category1]
-    
+
     # 4. 한글 2차 카테고리 체크
     if category2 in CATEGORY2_TO_GROUP:
         return CATEGORY2_TO_GROUP[category2]
-    
+
     # 5. 영문 2차 카테고리 체크
     if category2.lower() in CATEGORY_EN_TO_GROUP:
         return CATEGORY_EN_TO_GROUP[category2.lower()]
-    
+
     # 6. 기본값
     return "의류"
 
@@ -302,8 +306,9 @@ def get_category_group(category1: str, category2: str = "", target: str = "사�
 def convert_gender_to_model(gender: str) -> str:
     """성별을 모델 타입으로 변환 - auto/공용은 랜덤 선택"""
     import random
+
     gender_str = str(gender).lower().strip() if gender else ""
-    
+
     # 명시적 남성
     if gender_str in ["male", "남성", "검토필요"]:
         return "MALE"
@@ -411,7 +416,6 @@ CATEGORY_MODEL_CONFIG = {
         "size_note": "",
         "special_instruction": "For wallets and small items, model should hold them elegantly in hands.",
     },
-    
     # ==================== 확장 카테고리 ====================
     "키즈": {
         "name_en": "kids clothing/item",
@@ -567,7 +571,7 @@ CRITICAL: Make the food look ABSOLUTELY DELICIOUS. Fresh, vibrant colors. Profes
 def build_editorial_product_prompt(category: str, target: str = "사람") -> str:
     """카테고리/타겟별 화보 정물 프롬프트 생성"""
     category_group = get_category_group(category, "", target)
-    
+
     if category_group == "키즈" or target == "아동":
         return PROMPT_PRODUCT_EDITORIAL_KIDS
     elif category_group == "펫용품" or target == "반려동물":
@@ -583,7 +587,7 @@ def build_model_prompt(category: str, gender: str, target: str = "사람") -> st
     category_group = get_category_group(category, "", target)
     config = CATEGORY_MODEL_CONFIG.get(category_group, CATEGORY_MODEL_CONFIG["의류"])
     gender_model = convert_gender_to_model(gender)
-    
+
     # 펫용품일 때는 강아지/고양이만 나오도록 별도 프롬프트
     if category_group == "펫용품":
         return f"""Create adorable pet photos featuring a cute pet wearing/using this exact {config['name_en']}.
@@ -618,7 +622,7 @@ ABSOLUTELY CRITICAL:
 - Only the pet wearing/using the product
 - Same pet in ALL 4 shots
 - Product must match EXACTLY - same color, pattern, material, design"""
-    
+
     template = """Create professional luxury fashion e-commerce model photos with this exact {product_type}.
 
 {size_note}
@@ -657,12 +661,14 @@ CRITICAL:
     )
 
 
-def build_editorial_model_prompt(category: str, gender: str, target: str = "사람") -> str:
+def build_editorial_model_prompt(
+    category: str, gender: str, target: str = "사람"
+) -> str:
     """카테고리별 화보 모델 프롬프트 생성 (에디토리얼 스타일)"""
     category_group = get_category_group(category, "", target)
     config = CATEGORY_MODEL_CONFIG.get(category_group, CATEGORY_MODEL_CONFIG["의류"])
     gender_model = convert_gender_to_model(gender)
-    
+
     # 키즈/펫용품은 화보 스타일 다르게 처리
     if category_group == "키즈":
         return f"""Create bright, cheerful editorial photos featuring a child model with this exact {config['name_en']}.
@@ -693,7 +699,7 @@ VISUAL STYLE:
 {config['special_instruction']}
 
 CRITICAL: Product must match EXACTLY. Same child model in ALL shots."""
-    
+
     elif category_group == "펫용품":
         return f"""Create adorable pet photos featuring a cute pet wearing/using this exact {config['name_en']}.
 
@@ -726,7 +732,7 @@ ABSOLUTELY CRITICAL:
 - The product must be worn BY THE PET (dog or cat), NOT by a human
 - Do NOT show any human wearing pet clothes
 - Same pet in ALL 4 shots"""
-    
+
     elif category_group == "뷰티":
         return f"""Create luxurious beauty editorial photos featuring a model with this exact {config['name_en']}.
 
@@ -756,7 +762,7 @@ VISUAL STYLE:
 {config['special_instruction']}
 
 CRITICAL: Product must match EXACTLY. Same model in ALL shots. Focus on skin quality."""
-    
+
     elif category_group == "스포츠":
         return f"""Create dynamic athletic editorial photos featuring a model with this exact {config['name_en']}.
 
@@ -786,7 +792,7 @@ VISUAL STYLE:
 {config['special_instruction']}
 
 CRITICAL: Product must match EXACTLY. Same athletic model in ALL shots."""
-    
+
     else:
         # 기존 패션 화보 스타일
         template = """You are a legendary fashion photographer creating an ICONIC editorial spread.
@@ -1022,12 +1028,16 @@ async def deduct_credits(user_id: str, amount: int) -> int:
                     status_code=400, detail=data.get("error", "크레딧 차감 실패")
                 )
 
-        raise HTTPException(status_code=500, detail="크레딧 처리 중 오류가 발생했습니다")
+        raise HTTPException(
+            status_code=500, detail="크레딧 처리 중 오류가 발생했습니다"
+        )
     except HTTPException:
         raise
     except Exception as e:
         print(f"크레딧 차감 오류: {e}")
-        raise HTTPException(status_code=500, detail="크레딧 처리 중 오류가 발생했습니다")
+        raise HTTPException(
+            status_code=500, detail="크레딧 처리 중 오류가 발생했습니다"
+        )
 
 
 async def add_credits(user_id: str, amount: int) -> int:
@@ -1045,12 +1055,16 @@ async def add_credits(user_id: str, amount: int) -> int:
                     status_code=400, detail=data.get("error", "크레딧 추가 실패")
                 )
 
-        raise HTTPException(status_code=500, detail="크레딧 처리 중 오류가 발생했습니다")
+        raise HTTPException(
+            status_code=500, detail="크레딧 처리 중 오류가 발생했습니다"
+        )
     except HTTPException:
         raise
     except Exception as e:
         print(f"크레딧 추가 오류: {e}")
-        raise HTTPException(status_code=500, detail="크레딧 처리 중 오류가 발생했습니다")
+        raise HTTPException(
+            status_code=500, detail="크레딧 처리 중 오류가 발생했습니다"
+        )
 
 
 async def save_generation(
@@ -1080,7 +1094,11 @@ async def save_generation(
 
 @app.get("/")
 async def root():
-    return {"message": "Autopic API", "version": "1.2.0", "categories": list(CATEGORY_MODEL_CONFIG.keys())}
+    return {
+        "message": "Autopic API",
+        "version": "1.2.0",
+        "categories": list(CATEGORY_MODEL_CONFIG.keys()),
+    }
 
 
 @app.get("/health")
@@ -1129,11 +1147,15 @@ async def generate_image(request: GenerateRequest):
 
         # 프롬프트 선택 (TARGET 기반 카테고리 오버라이드 적용)
         if request.mode == "model":
-            prompt = build_model_prompt(request.category, request.gender, request.target)
+            prompt = build_model_prompt(
+                request.category, request.gender, request.target
+            )
         elif request.mode == "editorial_product":
             prompt = build_editorial_product_prompt(request.category, request.target)
         elif request.mode == "editorial_model":
-            prompt = build_editorial_model_prompt(request.category, request.gender, request.target)
+            prompt = build_editorial_model_prompt(
+                request.category, request.gender, request.target
+            )
         else:
             prompt = PROMPT_PRODUCT
 
@@ -1524,15 +1546,15 @@ async def desktop_get_credits(x_api_key: str = Header(None, alias="X-API-Key")):
 
         if not result.data:
             raise HTTPException(status_code=401, detail="유효하지 않은 API 키입니다")
-        
+
         user_id = result.data["user_id"]
         key_name = result.data.get("name", "")
-        
+
         # last_used_at 업데이트
         supabase.table("api_keys").update(
             {"last_used_at": datetime.now().isoformat()}
         ).eq("key_hash", key_hash).execute()
-        
+
     except HTTPException:
         raise
     except:
@@ -1891,17 +1913,16 @@ verification_codes: Dict[str, dict] = {}
 def get_solapi_headers():
     """솔라피 API 인증 헤더 생성"""
     import datetime as dt
-    date = dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    date = dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
     salt = secrets.token_hex(16)
     signature = hmac.new(
-        SOLAPI_API_SECRET.encode(),
-        (date + salt).encode(),
-        hashlib.sha256
+        SOLAPI_API_SECRET.encode(), (date + salt).encode(), hashlib.sha256
     ).hexdigest()
-    
+
     return {
         "Authorization": f"HMAC-SHA256 apiKey={SOLAPI_API_KEY}, date={date}, salt={salt}, signature={signature}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
 
@@ -1918,31 +1939,26 @@ class SMSVerifyRequest(BaseModel):
 async def send_verification_sms(request: SMSSendRequest):
     """인증번호 SMS 발송"""
     phone = request.phone.replace("-", "").replace(" ", "")
-    
+
     # 이미 가입된 번호인지 확인 (profiles 테이블)
     try:
-        existing = (
-            supabase.table("profiles")
-            .select("id")
-            .eq("phone", phone)
-            .execute()
-        )
+        existing = supabase.table("profiles").select("id").eq("phone", phone).execute()
         if existing.data and len(existing.data) > 0:
             return {"success": False, "error": "이미 가입된 휴대폰 번호입니다"}
     except Exception as e:
         print(f"번호 중복 체크 오류: {e}")
         # 체크 실패해도 진행 (테이블에 phone 컬럼이 없을 수 있음)
-    
+
     # 6자리 인증번호 생성
     code = str(secrets.randbelow(900000) + 100000)
-    
+
     # 인증번호 저장 (5분 유효)
     verification_codes[phone] = {
         "code": code,
         "expires_at": time.time() + 300,  # 5분
-        "attempts": 0
+        "attempts": 0,
     }
-    
+
     # 솔라피 API 호출
     try:
         async with httpx.AsyncClient() as client:
@@ -1953,17 +1969,17 @@ async def send_verification_sms(request: SMSSendRequest):
                     "message": {
                         "to": phone,
                         "from": SOLAPI_SENDER,
-                        "text": f"[AUTOPIC] 인증번호는 [{code}]입니다. 5분 내에 입력해주세요."
+                        "text": f"[AUTOPIC] 인증번호는 [{code}]입니다. 5분 내에 입력해주세요.",
                     }
-                }
+                },
             )
-        
+
         if response.status_code == 200:
             return {"success": True, "message": "인증번호가 발송되었습니다"}
         else:
             print(f"SMS 발송 실패: {response.text}")
             return {"success": False, "error": "SMS 발송에 실패했습니다"}
-            
+
     except Exception as e:
         print(f"SMS 발송 오류: {e}")
         return {"success": False, "error": "SMS 발송 중 오류가 발생했습니다"}
@@ -1973,30 +1989,39 @@ async def send_verification_sms(request: SMSSendRequest):
 async def verify_sms_code(request: SMSVerifyRequest):
     """인증번호 검증"""
     phone = request.phone.replace("-", "").replace(" ", "")
-    
+
     if phone not in verification_codes:
         return {"success": False, "error": "인증번호를 먼저 요청해주세요"}
-    
+
     stored = verification_codes[phone]
-    
+
     # 만료 체크
     if time.time() > stored["expires_at"]:
         del verification_codes[phone]
-        return {"success": False, "error": "인증번호가 만료되었습니다. 다시 요청해주세요"}
-    
+        return {
+            "success": False,
+            "error": "인증번호가 만료되었습니다. 다시 요청해주세요",
+        }
+
     # 시도 횟수 체크 (최대 5회)
     if stored["attempts"] >= 5:
         del verification_codes[phone]
-        return {"success": False, "error": "인증 시도 횟수를 초과했습니다. 다시 요청해주세요"}
-    
+        return {
+            "success": False,
+            "error": "인증 시도 횟수를 초과했습니다. 다시 요청해주세요",
+        }
+
     stored["attempts"] += 1
-    
+
     # 인증번호 확인
     if stored["code"] == request.code:
         del verification_codes[phone]
         return {"success": True, "message": "인증되었습니다"}
     else:
-        return {"success": False, "error": f"인증번호가 일치하지 않습니다 (남은 시도: {5 - stored['attempts']}회)"}
+        return {
+            "success": False,
+            "error": f"인증번호가 일치하지 않습니다 (남은 시도: {5 - stored['attempts']}회)",
+        }
 
 
 # ============================================================================
@@ -2025,14 +2050,14 @@ async def send_contact_email(request: ContactRequest):
         print(f"문의 접수 (이메일 미발송): {request.name} / {request.email}")
         print(f"내용: {request.message}")
         return {"success": True, "message": "문의가 접수되었습니다"}
-    
+
     try:
         # 이메일 구성
         msg = MIMEMultipart()
-        msg['From'] = ZOHO_EMAIL
-        msg['To'] = ZOHO_EMAIL
-        msg['Subject'] = f"[AUTOPIC 문의] {request.name}님의 문의"
-        
+        msg["From"] = ZOHO_EMAIL
+        msg["To"] = ZOHO_EMAIL
+        msg["Subject"] = f"[AUTOPIC 문의] {request.name}님의 문의"
+
         body = f"""AUTOPIC 웹사이트 문의가 접수되었습니다.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2047,21 +2072,21 @@ async def send_contact_email(request: ContactRequest):
 
 이 메일은 AUTOPIC 웹사이트에서 자동 발송되었습니다.
 """
-        
-        msg.attach(MIMEText(body, 'plain', 'utf-8'))
-        
+
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+
         # Zoho SMTP 서버로 발송
-        with smtplib.SMTP('smtp.zoho.com', 587) as server:
+        with smtplib.SMTP("smtp.zoho.com", 587) as server:
             server.starttls()
             server.login(ZOHO_EMAIL, ZOHO_PASSWORD)
             server.send_message(msg)
-        
+
         # 자동 회신 (고객에게)
         reply_msg = MIMEMultipart()
-        reply_msg['From'] = ZOHO_EMAIL
-        reply_msg['To'] = request.email
-        reply_msg['Subject'] = "[AUTOPIC] 문의가 접수되었습니다"
-        
+        reply_msg["From"] = ZOHO_EMAIL
+        reply_msg["To"] = request.email
+        reply_msg["Subject"] = "[AUTOPIC] 문의가 접수되었습니다"
+
         reply_body = f"""안녕하세요, {request.name}님!
 
 AUTOPIC에 문의해 주셔서 감사합니다.
@@ -2075,19 +2100,140 @@ AUTOPIC 팀 드림
 접수된 문의 내용:
 {request.message}
 """
-        
-        reply_msg.attach(MIMEText(reply_body, 'plain', 'utf-8'))
-        
-        with smtplib.SMTP('smtp.zoho.com', 587) as server:
+
+        reply_msg.attach(MIMEText(reply_body, "plain", "utf-8"))
+
+        with smtplib.SMTP("smtp.zoho.com", 587) as server:
             server.starttls()
             server.login(ZOHO_EMAIL, ZOHO_PASSWORD)
             server.send_message(reply_msg)
-        
+
         return {"success": True, "message": "문의가 접수되었습니다"}
-        
+
     except Exception as e:
         print(f"이메일 발송 오류: {e}")
         return {"success": False, "error": "문의 발송 중 오류가 발생했습니다"}
+
+
+# ============================================================================
+# 이미지 자동 삭제 (7일 경과)
+# ============================================================================
+
+from datetime import timedelta
+
+CLEANUP_SECRET = os.getenv("CLEANUP_SECRET", "autopic-cleanup-secret-2025")
+IMAGE_RETENTION_DAYS = 7
+
+
+@app.post("/api/cleanup/expired-images")
+async def cleanup_expired_images(
+    x_cleanup_secret: str = Header(None, alias="X-Cleanup-Secret")
+):
+    """7일 경과한 이미지 자동 삭제 (크론잡용)"""
+
+    # 보안: 시크릿 키 확인
+    if x_cleanup_secret != CLEANUP_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        # 7일 전 날짜 계산
+        cutoff_date = datetime.now() - timedelta(days=IMAGE_RETENTION_DAYS)
+        cutoff_iso = cutoff_date.isoformat()
+
+        # 삭제 대상 이미지 조회
+        result = (
+            supabase.table("generations")
+            .select("id, user_id, generated_image_url, created_at")
+            .lt("created_at", cutoff_iso)
+            .not_.is_("generated_image_url", "null")
+            .execute()
+        )
+
+        expired_items = result.data or []
+
+        if not expired_items:
+            return {
+                "success": True,
+                "message": "삭제할 이미지가 없습니다",
+                "deleted_count": 0,
+            }
+
+        deleted_count = 0
+        failed_count = 0
+
+        for item in expired_items:
+            try:
+                image_url = item.get("generated_image_url", "")
+                generation_id = item.get("id")
+
+                # Storage에서 파일 삭제
+                if image_url:
+                    try:
+                        if "generated-images/" in image_url:
+                            file_path = image_url.split("generated-images/")[1]
+                            supabase.storage.from_("generated-images").remove(
+                                [file_path]
+                            )
+                    except Exception as storage_error:
+                        print(f"Storage 삭제 실패 ({generation_id}): {storage_error}")
+
+                # DB에서 image_url을 null로 업데이트 (기록은 유지)
+                supabase.table("generations").update({"generated_image_url": None}).eq(
+                    "id", generation_id
+                ).execute()
+
+                deleted_count += 1
+
+            except Exception as item_error:
+                print(f"항목 삭제 실패 ({item.get('id')}): {item_error}")
+                failed_count += 1
+
+        return {
+            "success": True,
+            "message": f"{deleted_count}개 이미지 삭제 완료",
+            "deleted_count": deleted_count,
+            "failed_count": failed_count,
+        }
+
+    except Exception as e:
+        print(f"이미지 정리 오류: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/cleanup/status")
+async def get_cleanup_status():
+    """만료 예정 이미지 현황 조회"""
+    try:
+        now = datetime.now()
+        cutoff_7d = (now - timedelta(days=7)).isoformat()
+
+        # 만료된 이미지 수
+        expired = (
+            supabase.table("generations")
+            .select("id", count="exact")
+            .lt("created_at", cutoff_7d)
+            .not_.is_("generated_image_url", "null")
+            .execute()
+        )
+
+        # 유효한 이미지 수
+        active = (
+            supabase.table("generations")
+            .select("id", count="exact")
+            .gte("created_at", cutoff_7d)
+            .not_.is_("generated_image_url", "null")
+            .execute()
+        )
+
+        return {
+            "success": True,
+            "retention_days": IMAGE_RETENTION_DAYS,
+            "expired_count": expired.count or 0,
+            "active_count": active.count or 0,
+        }
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 # ============================================================================
