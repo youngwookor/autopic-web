@@ -9,96 +9,116 @@ export default function TermsPage() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 py-16 px-4">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">서비스 이용약관</h1>
+        <h1 className="text-3xl font-bold mb-8">오토픽(AUTOPIC) 이용약관</h1>
         
-        <p className="text-zinc-400 mb-8">시행일: 2024년 12월 1일</p>
+        <p className="text-zinc-400 mb-8">시행일: 2025년 1월 1일</p>
 
         <div className="space-y-8 text-zinc-300">
           <section>
             <h2 className="text-xl font-semibold text-white mb-4">제1조 (목적)</h2>
-            <p>이 약관은 AUTOPIC(이하 "회사")이 제공하는 AI 이미지 생성 서비스(이하 "서비스")의 이용조건 및 절차, 회사와 이용자의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.</p>
+            <p>본 약관은 오토픽(AUTOPIC)(이하 "회사")이 운영하는 웹사이트 및 애플리케이션을 통해 제공하는 AI 상품 이미지 생성 서비스 및 관련 제반 서비스(이하 "서비스")의 이용과 관련하여 회사와 이용자의 권리, 의무 및 책임 사항을 규정함을 목적으로 합니다.</p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-white mb-4">제2조 (정의)</h2>
-            <ul className="list-disc list-inside space-y-1 text-zinc-400">
-              <li>"서비스"란 회사가 제공하는 AI 기반 상품 이미지 생성 서비스를 말합니다.</li>
-              <li>"이용자"란 이 약관에 따라 서비스를 이용하는 회원을 말합니다.</li>
-              <li>"크레딧"이란 서비스 이용을 위해 필요한 가상의 결제 단위를 말합니다.</li>
+            <h2 className="text-xl font-semibold text-white mb-4">제2조 (요금 및 결제 방식)</h2>
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">1. 요금 체계</h3>
+                <p className="text-zinc-400">서비스는 크레딧 충전형과 정기 구독형(월간/연간)으로 구성됩니다. 사이트에 표기된 모든 금액은 부가세(VAT)가 포함된 최종 결제 금액입니다.</p>
+              </div>
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">2. 크레딧 충전 플랜</h3>
+                <ul className="list-disc list-inside space-y-1 text-zinc-400">
+                  <li>Light: 19,000원 (50 크레딧)</li>
+                  <li>Standard: 49,000원 (200 크레딧)</li>
+                  <li>Plus: 119,000원 (500 크레딧)</li>
+                  <li>Mega: 349,000원 (1,500 크레딧)</li>
+                  <li>Ultimate: 999,000원 (5,000 크레딧)</li>
+                </ul>
+              </div>
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">3. 정기 구독 플랜</h3>
+                <p className="text-zinc-400">매월 정해진 크레딧이 지급되며, 연간 플랜 결제 시 월간 플랜 대비 할인된 가격이 적용됩니다.</p>
+              </div>
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">4. 결제 제한</h3>
+                <p className="text-zinc-400">충전형 상품의 특성상 카드사의 정책에 따라 결제 한도가 제한될 수 있으며, 하나카드 등 일부 카드사는 결제가 불가할 수 있습니다.</p>
+              </div>
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">5. 결제 수단</h3>
+                <p className="text-zinc-400">신용카드 및 카카오페이, 네이버페이, 페이코, 토스페이에 한해 이용이 가능하며, 그 외의 간편결제 수단은 카드사 및 PG사 정책에 따라 이용이 제한됩니다.</p>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold text-white mb-4">제3조 (크레딧 사용 및 유효기간)</h2>
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">1. 사용 용도</h3>
+                <p className="text-zinc-400 mb-2">충전된 크레딧은 서비스 내에서 AI 모델을 이용한 이미지 생성 권한을 획득하는 데 사용됩니다.</p>
+                <ul className="list-disc list-inside space-y-1 text-zinc-400">
+                  <li>Standard 모델: 1회 생성 시 1 크레딧 소진</li>
+                  <li>Premium 모델: 1회 생성 시 3 크레딧 소진</li>
+                </ul>
+              </div>
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">2. 유효기간</h3>
+                <p className="text-zinc-400">충전된 크레딧의 이용 기간 및 환불 가능 기간은 <strong className="text-white">결제 시점으로부터 1년(12개월)</strong>입니다. 기간이 경과한 크레딧은 소멸되며 환불이 불가합니다.</p>
+              </div>
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">3. 양도 금지</h3>
+                <p className="text-zinc-400">사용자가 보유한 크레딧은 타인에게 양도, 판매, 대여할 수 없으며 계정 간 이동도 불가능합니다.</p>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold text-white mb-4">제4조 (저작권 및 상업적 이용)</h2>
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">1. 권리 귀속</h3>
+                <p className="text-zinc-400">서비스를 통해 생성된 모든 이미지의 저작권 및 소유권은 생성한 이용자에게 귀속됩니다.</p>
+              </div>
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">2. 상업적 활용</h3>
+                <p className="text-zinc-400">이용자는 생성된 이미지를 쇼핑몰 홍보, 광고 등 상업적 용도로 제한 없이 사용할 수 있습니다.</p>
+              </div>
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">3. 회사 활용</h3>
+                <p className="text-zinc-400">회사는 서비스 홍보 및 AI 품질 개선을 위해 익명화된 생성물을 활용할 수 있습니다.</p>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold text-white mb-4">제5조 (청약철회 및 환불 정책)</h2>
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">1. 전액 환불</h3>
+                <p className="text-zinc-400">결제 후 7일 이내에 크레딧을 전혀 사용하지 않은 경우에 한하여 전액 환불이 가능합니다.</p>
+              </div>
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">2. 환불 방법</h3>
+                <p className="text-zinc-400">환불은 반드시 결제가 이루어졌던 원결제 수단(카드 취소 등)으로 진행됩니다. 시스템상 원결제 취소가 불가능한 부득이한 경우에 한해 별도 정산 후 계좌 입금 처리됩니다.</p>
+              </div>
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">3. 환불 불가</h3>
+                <p className="text-zinc-400">디지털 콘텐츠 특성상 1회라도 크레딧을 사용하여 이미지를 생성한 경우 변심에 의한 환불은 불가능합니다.</p>
+              </div>
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">4. 시스템 오류</h3>
+                <p className="text-zinc-400">회사의 귀책 사유로 생성에 실패하고 크레딧만 차감된 경우, 해당 크레딧은 즉시 복구해 드립니다.</p>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold text-white mb-4">제6조 (면책 조항)</h2>
+            <ul className="list-disc list-inside space-y-2 text-zinc-400">
+              <li>회사는 AI 기술의 특성상 생성 결과의 완벽성이나 이용자의 주관적 기대치 부합 여부를 보장하지 않으며, 이로 인한 환불은 불가합니다.</li>
+              <li>천재지변, 외부 서비스의 장애로 인한 서비스 중단에 대해 회사는 책임을 지지 않습니다.</li>
             </ul>
-          </section>
-
-          <section>
-            <h2 className="text-xl font-semibold text-white mb-4">제3조 (서비스의 내용)</h2>
-            <p>회사가 제공하는 서비스는 다음과 같습니다.</p>
-            <ul className="list-disc list-inside mt-2 space-y-1 text-zinc-400">
-              <li>AI 기반 상품 이미지 생성</li>
-              <li>AI 기반 모델 착용샷 생성</li>
-              <li>기타 회사가 정하는 서비스</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-xl font-semibold text-white mb-4">제4조 (이용계약의 성립)</h2>
-            <p>이용계약은 이용자가 약관의 내용에 동의하고 회원가입 신청을 한 후 회사가 이를 승낙함으로써 성립합니다.</p>
-          </section>
-
-          <section>
-            <h2 className="text-xl font-semibold text-white mb-4">제5조 (크레딧 및 결제)</h2>
-            <ul className="list-disc list-inside space-y-1 text-zinc-400">
-              <li>서비스 이용을 위해서는 크레딧이 필요합니다.</li>
-              <li>크레딧은 회사가 정한 방법으로 충전할 수 있습니다.</li>
-              <li>충전된 크레딧은 환불되지 않습니다. 단, 관련 법령에 따른 경우는 예외로 합니다.</li>
-              <li>크레딧의 유효기간은 충전일로부터 1년입니다.</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-xl font-semibold text-white mb-4">제6조 (이용자의 의무)</h2>
-            <p>이용자는 다음 행위를 하여서는 안 됩니다.</p>
-            <ul className="list-disc list-inside mt-2 space-y-1 text-zinc-400">
-              <li>타인의 정보를 도용하는 행위</li>
-              <li>서비스를 이용하여 불법적인 콘텐츠를 생성하는 행위</li>
-              <li>서비스의 안정적 운영을 방해하는 행위</li>
-              <li>기타 법령에 위반되는 행위</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-xl font-semibold text-white mb-4">제7조 (저작권)</h2>
-            <ul className="list-disc list-inside space-y-1 text-zinc-400">
-              <li>서비스를 통해 생성된 이미지의 저작권은 이용자에게 귀속됩니다.</li>
-              <li>이용자가 업로드한 원본 이미지에 대한 권리와 책임은 이용자에게 있습니다.</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-xl font-semibold text-white mb-4">제8조 (서비스 중단)</h2>
-            <p>회사는 다음 각 호에 해당하는 경우 서비스 제공을 중단할 수 있습니다.</p>
-            <ul className="list-disc list-inside mt-2 space-y-1 text-zinc-400">
-              <li>설비의 보수 등 공사로 인한 부득이한 경우</li>
-              <li>천재지변, 정전 등 불가항력적 사유가 발생한 경우</li>
-              <li>서비스 이용의 폭주 등으로 정상적인 서비스 이용에 지장이 있는 경우</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-xl font-semibold text-white mb-4">제9조 (면책조항)</h2>
-            <ul className="list-disc list-inside space-y-1 text-zinc-400">
-              <li>회사는 천재지변 또는 이에 준하는 불가항력으로 인하여 서비스를 제공할 수 없는 경우에는 서비스 제공에 관한 책임이 면제됩니다.</li>
-              <li>회사는 이용자의 귀책사유로 인한 서비스 이용의 장애에 대하여 책임을 지지 않습니다.</li>
-              <li>AI가 생성한 이미지의 품질이나 정확성에 대해서는 보증하지 않습니다.</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-xl font-semibold text-white mb-4">제10조 (약관의 변경)</h2>
-            <p>회사는 필요한 경우 약관을 변경할 수 있으며, 변경된 약관은 서비스 내 공지사항을 통해 공지합니다.</p>
-          </section>
-
-          <section>
-            <h2 className="text-xl font-semibold text-white mb-4">제11조 (분쟁해결)</h2>
-            <p>서비스 이용으로 발생한 분쟁에 대해 소송이 제기되는 경우 회사의 본사 소재지를 관할하는 법원을 관할 법원으로 합니다.</p>
           </section>
         </div>
 
