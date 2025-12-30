@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { ArrowRight, Play, X } from 'lucide-react';
+import { useAuthStore } from '@/lib/store';
 
 // 유튜브 모달 컴포넌트
 function VideoModal({ onClose }: { onClose: () => void }) {
@@ -50,6 +52,8 @@ function VideoModal({ onClose }: { onClose: () => void }) {
 }
 
 export default function Hero() {
+  const router = useRouter();
+  const { isAuthenticated } = useAuthStore();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
@@ -68,6 +72,17 @@ export default function Hero() {
     }, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  // CTA 버튼 클릭 핸들러
+  const handleCtaClick = () => {
+    if (isAuthenticated) {
+      // 로그인 상태 → 스튜디오 섹션으로 스크롤
+      document.getElementById('studio')?.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      // 비로그인 상태 → 회원가입 페이지로 이동
+      router.push('/register');
+    }
+  };
 
   return (
     <section className="relative bg-[#fafafa] overflow-hidden">
@@ -147,7 +162,7 @@ export default function Hero() {
           {/* CTA */}
           <div className={`space-y-3 mb-8 transition-all duration-700 delay-400 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
             <button
-              onClick={() => document.getElementById('studio')?.scrollIntoView({ behavior: 'smooth' })}
+              onClick={handleCtaClick}
               className="w-full bg-zinc-900 text-white px-7 py-4 rounded-full font-semibold text-sm flex items-center justify-center gap-2"
             >
               무료로 시작하기
@@ -221,7 +236,7 @@ export default function Hero() {
                 className={`flex items-center gap-4 mb-12 transition-all duration-700 delay-300 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}
               >
                 <button
-                  onClick={() => document.getElementById('studio')?.scrollIntoView({ behavior: 'smooth' })}
+                  onClick={handleCtaClick}
                   className="group bg-zinc-900 text-white px-8 py-4 rounded-full font-semibold flex items-center gap-3 hover:bg-zinc-800 transition-all hover:shadow-xl"
                 >
                   무료로 시작하기

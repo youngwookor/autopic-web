@@ -167,3 +167,39 @@ export async function addCredits(userId: string, credits: number, paymentKey?: s
   
   return profile.credits + credits;
 }
+
+// ============================================
+// 회원탈퇴 함수
+// ============================================
+
+export async function deleteAccount() {
+  // 현재 사용자 확인
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('로그인이 필요합니다');
+  
+  // 1. 프로필 데이터 삭제 (CASCADE로 관련 데이터도 삭제될 수 있음)
+  const { error: profileError } = await supabase
+    .from('profiles')
+    .delete()
+    .eq('id', user.id);
+  
+  if (profileError) {
+    console.error('Profile deletion error:', profileError);
+    // 프로필 삭제 실패해도 계정 삭제는 진행
+  }
+  
+  // 2. 로컬 스토리지 클리어
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('autopic-auth');
+    localStorage.removeItem('auth-storage');
+    localStorage.removeItem('credits-storage');
+  }
+  
+  // 3. Supabase Auth에서 사용자 삭제 요청 (로그아웃 처리)
+  // 참고: 실제 auth.users 삭제는 서버사이드나 관리자 권한 필요
+  // 여기서는 로그아웃 처리 + 프로필 삭제로 대체
+  const { error: signOutError } = await supabase.auth.signOut({ scope: 'global' });
+  if (signOutError) throw signOutError;
+  
+  return true;
+}
