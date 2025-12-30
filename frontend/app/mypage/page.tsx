@@ -6,12 +6,12 @@ export const dynamic = 'force-dynamic';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { supabase, deleteAccount } from '@/lib/supabase';
 import { useAuthStore, useCreditsStore } from '@/lib/store';
 import { 
   User, CreditCard, Image, Settings, LogOut, 
   Zap, Crown, ChevronRight,
-  ArrowLeft, Sparkles, Key, Monitor
+  ArrowLeft, Sparkles, Key, Monitor, Trash2, AlertTriangle, X
 } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -54,6 +54,11 @@ export default function MyPage() {
   const [profile, setProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  // 회원탈퇴 모달 상태
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -139,6 +144,28 @@ export default function MyPage() {
       console.error('Logout error:', error);
       toast.error('로그아웃 중 오류가 발생했습니다');
       setIsLoggingOut(false);
+    }
+  };
+
+  // 회원탈퇴 처리
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== '탈퇴합니다') {
+      toast.error('"탈퇴합니다"를 정확히 입력해주세요');
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await deleteAccount();
+      storeLogout();
+      setBalance(0);
+      toast.success('회원탈퇴가 완료되었습니다');
+      window.location.href = '/';
+    } catch (error: any) {
+      toast.error(error.message || '회원탈퇴 처리 중 오류가 발생했습니다');
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteModal(false);
     }
   };
 
@@ -343,6 +370,7 @@ export default function MyPage() {
                 <button onClick={() => toast('프로필 저장 기능은 준비 중입니다', { icon: '🚧' })} className="px-6 py-3 bg-[#87D039] text-black font-bold rounded-xl hover:bg-[#9AE045] transition">저장하기</button>
               </div>
             </div>
+
             <div className="bg-white rounded-2xl md:rounded-3xl border border-zinc-200 p-6 md:p-8">
               <h3 className="font-bold text-lg mb-6">계정 관리</h3>
               <button onClick={handleLogout} disabled={isLoggingOut} className="w-full flex items-center justify-between p-4 bg-zinc-50 rounded-xl hover:bg-zinc-100 transition disabled:opacity-50">
@@ -350,9 +378,101 @@ export default function MyPage() {
                 <ChevronRight size={20} className="text-zinc-400" />
               </button>
             </div>
+
+            {/* 회원탈퇴 섹션 */}
+            <div className="bg-red-50 rounded-2xl md:rounded-3xl border border-red-200 p-6 md:p-8">
+              <h3 className="font-bold text-lg text-red-600 mb-2">위험 구역</h3>
+              <p className="text-sm text-red-500 mb-6">이 작업은 되돌릴 수 없습니다</p>
+              
+              <button 
+                onClick={() => setShowDeleteModal(true)}
+                className="w-full flex items-center justify-between p-4 bg-white rounded-xl border border-red-200 hover:bg-red-50 transition"
+              >
+                <div className="flex items-center gap-3">
+                  <Trash2 size={20} className="text-red-500" />
+                  <div className="text-left">
+                    <p className="font-medium text-zinc-900">회원탈퇴</p>
+                    <p className="text-xs text-zinc-500">계정과 모든 데이터가 영구적으로 삭제됩니다</p>
+                  </div>
+                </div>
+                <ChevronRight size={20} className="text-red-400" />
+              </button>
+            </div>
           </div>
         )}
       </div>
+
+      {/* 회원탈퇴 확인 모달 */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 md:p-8">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                  <AlertTriangle size={24} className="text-red-600" />
+                </div>
+                <h3 className="text-xl font-bold text-zinc-900">회원탈퇴</h3>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteConfirmText('');
+                }}
+                className="p-2 hover:bg-zinc-100 rounded-full transition"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              <p className="text-zinc-600">
+                정말로 탈퇴하시겠습니까? 탈퇴 시 다음 정보가 모두 삭제됩니다:
+              </p>
+              <ul className="text-sm text-zinc-500 space-y-1 list-disc list-inside">
+                <li>계정 정보 및 프로필</li>
+                <li>보유 크레딧 ({formatNumber(currentCredits)} 크레딧)</li>
+                <li>생성 이미지 히스토리 ({totalGenerations}장)</li>
+                <li>결제 내역</li>
+              </ul>
+              <p className="text-red-600 font-medium text-sm">
+                ⚠️ 이 작업은 되돌릴 수 없습니다.
+              </p>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-zinc-700 mb-2">
+                탈퇴를 확인하려면 <span className="font-bold text-red-600">"탈퇴합니다"</span>를 입력하세요
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="탈퇴합니다"
+                className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-red-500"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteConfirmText('');
+                }}
+                className="flex-1 py-3 bg-zinc-100 text-zinc-700 font-bold rounded-xl hover:bg-zinc-200 transition"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleteConfirmText !== '탈퇴합니다' || isDeleting}
+                className="flex-1 py-3 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isDeleting ? '처리 중...' : '회원탈퇴'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
