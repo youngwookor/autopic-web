@@ -1,0 +1,42 @@
+name: Daily Image Cleanup
+
+on:
+  # 매일 한국시간 오전 3시에 실행 (UTC 18:00 = KST 03:00)
+  schedule:
+    - cron: '0 18 * * *'
+  
+  # 수동 실행도 가능
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Cleanup Expired Images
+        run: |
+          echo "🧹 Starting cleanup of expired images..."
+          
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "X-Cleanup-Secret: ${{ secrets.CLEANUP_SECRET }}" \
+            -H "Content-Type: application/json" \
+            "${{ secrets.BACKEND_URL }}/api/cleanup/expired-images")
+          
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          
+          echo "Response: $body"
+          echo "HTTP Code: $http_code"
+          
+          if [ "$http_code" != "200" ]; then
+            echo "❌ Cleanup failed with HTTP $http_code"
+            exit 1
+          fi
+          
+          echo "✅ Cleanup completed successfully!"
+
+      - name: Check Cleanup Status
+        run: |
+          echo "📊 Checking current status..."
+          
+          curl -s "${{ secrets.BACKEND_URL }}/api/cleanup/status" | jq .

@@ -33,6 +33,7 @@ export default function PrivacyPage() {
             <ul className="list-disc list-inside space-y-2 text-zinc-400">
               <li><strong className="text-zinc-200">필수 항목:</strong> 이메일 주소(ID), 비밀번호, 닉네임, 서비스 이용 기록, 접속 로그, IP 정보.</li>
               <li><strong className="text-zinc-200">결제/환불 시:</strong> 카드정보 일부(카드사명, 승인번호), 결제 금액, 휴대전화 번호, (취소 불가 시) 환불 계좌 정보.</li>
+              <li><strong className="text-zinc-200">서비스 이용 시:</strong> 업로드한 원본 이미지, 생성된 AI 이미지, 생성 설정 정보.</li>
             </ul>
           </section>
 
@@ -42,6 +43,10 @@ export default function PrivacyPage() {
               <div>
                 <h3 className="font-medium text-zinc-200 mb-2">원칙</h3>
                 <p className="text-zinc-400">회원 탈퇴 시 또는 서비스 종료 시까지 보관합니다.</p>
+              </div>
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">생성 이미지 보관</h3>
+                <p className="text-zinc-400">서비스를 통해 생성된 이미지는 <strong className="text-white">생성일로부터 7일간</strong> 보관 후 자동 삭제됩니다. 이용자는 보관 기간 내에 필요한 이미지를 다운로드하여 별도 저장하시기 바랍니다.</p>
               </div>
               <div>
                 <h3 className="font-medium text-zinc-200 mb-2">법령에 의한 보존</h3>

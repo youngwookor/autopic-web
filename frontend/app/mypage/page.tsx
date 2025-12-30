@@ -11,7 +11,8 @@ import { useAuthStore, useCreditsStore } from '@/lib/store';
 import { 
   User, CreditCard, Image, Settings, LogOut, 
   Zap, Crown, ChevronRight,
-  ArrowLeft, Sparkles, Key, Monitor, Trash2, AlertTriangle, X
+  ArrowLeft, Sparkles, Key, Monitor, Trash2, AlertTriangle, X,
+  Clock, Download, Info
 } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -41,6 +42,32 @@ interface ApiKey {
   key_preview: string;
   is_active: boolean;
   created_at: string;
+}
+
+// 남은 보관 일수 계산 함수
+function getRemainingDays(createdAt: string): number {
+  const created = new Date(createdAt);
+  const now = new Date();
+  const diffTime = created.getTime() + (7 * 24 * 60 * 60 * 1000) - now.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return Math.max(0, diffDays);
+}
+
+// 남은 시간 포맷 함수
+function formatRemainingTime(createdAt: string): string {
+  const remainingDays = getRemainingDays(createdAt);
+  if (remainingDays <= 0) return '만료됨';
+  if (remainingDays === 1) return '오늘 만료';
+  return `${remainingDays}일 남음`;
+}
+
+// 만료 상태에 따른 색상
+function getExpiryColor(createdAt: string): string {
+  const remainingDays = getRemainingDays(createdAt);
+  if (remainingDays <= 0) return 'text-zinc-400 bg-zinc-100';
+  if (remainingDays <= 2) return 'text-red-600 bg-red-50';
+  if (remainingDays <= 4) return 'text-orange-600 bg-orange-50';
+  return 'text-green-600 bg-green-50';
 }
 
 export default function MyPage() {
@@ -169,6 +196,25 @@ export default function MyPage() {
     }
   };
 
+  // 이미지 다운로드 함수
+  const handleDownloadImage = async (imageUrl: string, index: number) => {
+    try {
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `autopic_${Date.now()}_${index}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      toast.success('다운로드 완료!');
+    } catch (error) {
+      toast.error('다운로드에 실패했습니다');
+    }
+  };
+
   const formatDate = (dateString: string) => {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleDateString('ko-KR', {
@@ -207,6 +253,10 @@ export default function MyPage() {
   const thisMonth = new Date(); thisMonth.setDate(1); thisMonth.setHours(0,0,0,0);
   const thisMonthUsage = usages.filter(u => new Date(u.created_at) >= thisMonth).reduce((sum, u) => sum + u.credits_used, 0);
   const totalGenerations = generations.length;
+
+  // 유효한 이미지만 필터링 (7일 이내)
+  const validGenerations = generations.filter(gen => getRemainingDays(gen.created_at) > 0);
+  const expiredGenerations = generations.filter(gen => getRemainingDays(gen.created_at) <= 0);
 
   return (
     <div className="min-h-screen bg-zinc-50">
@@ -300,8 +350,18 @@ export default function MyPage() {
               {generations.length > 0 ? (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
                   {generations.slice(0, 4).map((gen) => (
-                    <div key={gen.id} className="aspect-square rounded-xl overflow-hidden bg-zinc-100">
-                      {gen.generated_image_url ? <img src={gen.generated_image_url} alt="Generated" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-zinc-400"><Image size={32} /></div>}
+                    <div key={gen.id} className="relative aspect-square rounded-xl overflow-hidden bg-zinc-100 group">
+                      {gen.generated_image_url ? (
+                        <>
+                          <img src={gen.generated_image_url} alt="Generated" className="w-full h-full object-cover" />
+                          {/* 남은 일수 배지 */}
+                          <div className={`absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-bold ${getExpiryColor(gen.created_at)}`}>
+                            {formatRemainingTime(gen.created_at)}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-zinc-400"><Image size={32} /></div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -313,20 +373,126 @@ export default function MyPage() {
         )}
 
         {activeTab === 'generations' && (
-          <div className="bg-white rounded-2xl md:rounded-3xl border border-zinc-200 p-6 md:p-8">
-            <h3 className="font-bold text-lg mb-6">생성 내역</h3>
-            {generations.length > 0 ? (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {generations.map((gen) => (
-                  <div key={gen.id} className="bg-zinc-50 rounded-xl overflow-hidden">
-                    <div className="aspect-square">{gen.generated_image_url ? <img src={gen.generated_image_url} alt="Generated" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-zinc-400 bg-zinc-100"><Image size={32} /></div>}</div>
-                    <div className="p-3"><span className="text-xs font-medium bg-zinc-200 px-2 py-0.5 rounded">{getModeName(gen.mode)}</span><p className="text-xs text-zinc-500 mt-2">{formatDate(gen.created_at)}</p></div>
-                  </div>
-                ))}
+          <div className="space-y-6">
+            {/* 7일 보관 안내 배너 */}
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 md:p-6">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
+                  <Info size={20} className="text-blue-600" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-blue-900 mb-1">이미지 보관 안내</h4>
+                  <p className="text-sm text-blue-700">
+                    생성된 이미지는 <strong>7일간</strong> 보관됩니다. 보관 기간이 지나면 자동으로 삭제되며 복구할 수 없습니다.
+                    필요한 이미지는 미리 다운로드해주세요.
+                  </p>
+                </div>
               </div>
-            ) : (
-              <div className="text-center py-16 text-zinc-400"><Image size={48} className="mx-auto mb-4 opacity-50" /><p>생성 내역이 없습니다</p></div>
+            </div>
+
+            {/* 곧 만료되는 이미지 경고 */}
+            {validGenerations.filter(gen => getRemainingDays(gen.created_at) <= 2).length > 0 && (
+              <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 md:p-6">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center shrink-0">
+                    <AlertTriangle size={20} className="text-orange-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-orange-900 mb-1">
+                      {validGenerations.filter(gen => getRemainingDays(gen.created_at) <= 2).length}개의 이미지가 곧 삭제됩니다
+                    </h4>
+                    <p className="text-sm text-orange-700">
+                      2일 이내에 삭제될 이미지가 있습니다. 필요한 이미지는 지금 다운로드하세요.
+                    </p>
+                  </div>
+                </div>
+              </div>
             )}
+
+            <div className="bg-white rounded-2xl md:rounded-3xl border border-zinc-200 p-6 md:p-8">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="font-bold text-lg">생성 내역</h3>
+                <div className="flex items-center gap-2 text-sm text-zinc-500">
+                  <Clock size={14} />
+                  <span>보관: 7일</span>
+                </div>
+              </div>
+
+              {validGenerations.length > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {validGenerations.map((gen, index) => (
+                    <div key={gen.id} className="bg-zinc-50 rounded-xl overflow-hidden group relative">
+                      <div className="aspect-square relative">
+                        {gen.generated_image_url ? (
+                          <>
+                            <img src={gen.generated_image_url} alt="Generated" className="w-full h-full object-cover" />
+                            {/* 호버 시 다운로드 버튼 */}
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <button
+                                onClick={() => handleDownloadImage(gen.generated_image_url, index)}
+                                className="p-3 bg-white rounded-full hover:bg-zinc-100 transition"
+                              >
+                                <Download size={20} className="text-zinc-900" />
+                              </button>
+                            </div>
+                            {/* 남은 일수 배지 */}
+                            <div className={`absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-bold ${getExpiryColor(gen.created_at)}`}>
+                              {formatRemainingTime(gen.created_at)}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-zinc-400 bg-zinc-100">
+                            <Image size={32} />
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-medium bg-zinc-200 px-2 py-0.5 rounded">{getModeName(gen.mode)}</span>
+                        </div>
+                        <p className="text-xs text-zinc-500">{formatDate(gen.created_at)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-16 text-zinc-400">
+                  <Image size={48} className="mx-auto mb-4 opacity-50" />
+                  <p>보관 중인 이미지가 없습니다</p>
+                </div>
+              )}
+
+              {/* 만료된 이미지 기록 (접힌 상태) */}
+              {expiredGenerations.length > 0 && (
+                <div className="mt-8 pt-8 border-t border-zinc-200">
+                  <details className="group">
+                    <summary className="cursor-pointer flex items-center gap-2 text-zinc-500 hover:text-zinc-700 transition">
+                      <ChevronRight size={16} className="group-open:rotate-90 transition-transform" />
+                      <span className="text-sm">만료된 이미지 기록 ({expiredGenerations.length}개)</span>
+                    </summary>
+                    <div className="mt-4 space-y-2">
+                      {expiredGenerations.slice(0, 10).map((gen) => (
+                        <div key={gen.id} className="flex items-center gap-3 p-3 bg-zinc-50 rounded-lg text-zinc-400">
+                          <div className="w-10 h-10 bg-zinc-200 rounded-lg flex items-center justify-center">
+                            <Image size={16} />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm">{getModeName(gen.mode)}</p>
+                            <p className="text-xs">{formatDate(gen.created_at)}</p>
+                          </div>
+                          <span className="text-xs bg-zinc-200 px-2 py-0.5 rounded">삭제됨</span>
+                        </div>
+                      ))}
+                      {expiredGenerations.length > 10 && (
+                        <p className="text-xs text-zinc-400 text-center py-2">
+                          외 {expiredGenerations.length - 10}개의 기록이 더 있습니다
+                        </p>
+                      )}
+                    </div>
+                  </details>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

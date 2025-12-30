@@ -74,7 +74,25 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-white mb-4">제4조 (저작권 및 상업적 이용)</h2>
+            <h2 className="text-xl font-semibold text-white mb-4">제4조 (생성 이미지 보관 정책)</h2>
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">1. 보관 기간</h3>
+                <p className="text-zinc-400">서비스를 통해 생성된 이미지는 <strong className="text-white">생성일로부터 7일간</strong> 서버에 보관됩니다. 7일이 경과한 이미지는 자동으로 삭제되며, 삭제된 이미지는 복구할 수 없습니다.</p>
+              </div>
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">2. 다운로드 권장</h3>
+                <p className="text-zinc-400">이용자는 생성된 이미지를 보관 기간 내에 다운로드하여 별도로 저장하시기 바랍니다. 회사는 보관 기간 경과 후 삭제된 이미지에 대해 어떠한 책임도 지지 않습니다.</p>
+              </div>
+              <div>
+                <h3 className="font-medium text-zinc-200 mb-2">3. 생성 기록</h3>
+                <p className="text-zinc-400">이미지 생성 기록(생성 일시, 모드, 사용 크레딧 등)은 이미지 삭제 후에도 마이페이지에서 확인할 수 있습니다.</p>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold text-white mb-4">제5조 (저작권 및 상업적 이용)</h2>
             <div className="space-y-4">
               <div>
                 <h3 className="font-medium text-zinc-200 mb-2">1. 권리 귀속</h3>
@@ -92,7 +110,7 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-white mb-4">제5조 (청약철회 및 환불 정책)</h2>
+            <h2 className="text-xl font-semibold text-white mb-4">제6조 (청약철회 및 환불 정책)</h2>
             <div className="space-y-4">
               <div>
                 <h3 className="font-medium text-zinc-200 mb-2">1. 전액 환불</h3>
@@ -114,10 +132,11 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-white mb-4">제6조 (면책 조항)</h2>
+            <h2 className="text-xl font-semibold text-white mb-4">제7조 (면책 조항)</h2>
             <ul className="list-disc list-inside space-y-2 text-zinc-400">
               <li>회사는 AI 기술의 특성상 생성 결과의 완벽성이나 이용자의 주관적 기대치 부합 여부를 보장하지 않으며, 이로 인한 환불은 불가합니다.</li>
               <li>천재지변, 외부 서비스의 장애로 인한 서비스 중단에 대해 회사는 책임을 지지 않습니다.</li>
+              <li>이용자가 보관 기간(7일) 내에 이미지를 다운로드하지 않아 발생하는 손실에 대해 회사는 책임을 지지 않습니다.</li>
             </ul>
           </section>
         </div>
