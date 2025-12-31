@@ -5,76 +5,145 @@ import { useRouter } from 'next/navigation';
 import { ArrowRight, Play, X } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 
-// 데모 비디오 모달 컴포넌트
+// 데모 비디오 모달 컴포넌트 - 이머시브 디자인
 function VideoModal({ onClose }: { onClose: () => void }) {
+  const [isVisible, setIsVisible] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(true);
+
   useEffect(() => {
+    // 진입 애니메이션
+    requestAnimationFrame(() => setIsVisible(true));
+    
     // ESC 키로 닫기
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') handleClose();
     };
     document.addEventListener('keydown', handleEsc);
-    // 스크롤 방지
     document.body.style.overflow = 'hidden';
+    
     return () => {
       document.removeEventListener('keydown', handleEsc);
       document.body.style.overflow = 'unset';
     };
-  }, [onClose]);
+  }, []);
+
+  const handleClose = () => {
+    setIsVisible(false);
+    setTimeout(onClose, 300);
+  };
 
   return (
     <div 
-      className="fixed inset-0 z-[100] bg-black/95 flex items-end md:items-center justify-center"
-      onClick={onClose}
+      className={`fixed inset-0 z-[100] flex items-center justify-center transition-all duration-300 ${
+        isVisible ? 'bg-black/95 backdrop-blur-sm' : 'bg-black/0'
+      }`}
+      onClick={handleClose}
     >
-      {/* 닫기 버튼 */}
+      {/* 배경 글로우 효과 */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-violet-600/20 rounded-full blur-[120px] transition-opacity duration-700 ${isVisible ? 'opacity-100' : 'opacity-0'}`} />
+        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-purple-500/20 rounded-full blur-[80px] transition-opacity duration-700 delay-100 ${isVisible ? 'opacity-100' : 'opacity-0'}`} />
+      </div>
+
+      {/* 닫기 버튼 - 상단 우측 */}
       <button 
-        onClick={onClose}
-        className="absolute top-4 right-4 p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors z-20"
+        onClick={handleClose}
+        className={`absolute top-4 right-4 md:top-6 md:right-6 p-2.5 md:p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all z-20 group ${isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}
       >
-        <X className="w-6 h-6 text-white" />
+        <X className="w-5 h-5 md:w-6 md:h-6 text-white group-hover:rotate-90 transition-transform duration-300" />
       </button>
 
-      {/* 비디오 컨테이너 - 모바일: 하단 시트, PC: 중앙 */}
+      {/* 메인 컨테이너 */}
       <div 
-        className="relative w-full md:w-auto md:max-w-4xl bg-zinc-900 rounded-t-3xl md:rounded-2xl overflow-hidden shadow-2xl max-h-[90vh] md:max-h-[85vh] flex flex-col"
+        className={`relative w-full max-w-5xl mx-4 transition-all duration-500 ${isVisible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-8'}`}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 모바일 드래그 핸들 */}
-        <div className="md:hidden w-full py-3 flex justify-center">
-          <div className="w-10 h-1 bg-zinc-600 rounded-full" />
-        </div>
-
-        {/* 비디오 플레이어 */}
-        <div className="relative w-full aspect-video bg-black">
-          <video
-            src="/samples/demo-hero.mp4"
-            autoPlay
-            loop
-            controls
-            playsInline
-            className="w-full h-full object-contain"
-          />
-          
-          {/* 배지 */}
-          <div className="absolute top-3 left-3 px-3 py-1.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-xs font-bold rounded-full flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-            360° 회전 비디오
+        {/* 상단 배지 */}
+        <div className={`flex items-center justify-center gap-2 mb-4 transition-all duration-500 delay-100 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
+          <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-600 to-purple-600 rounded-full">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+            </span>
+            <span className="text-white text-xs md:text-sm font-bold">360° 회전 비디오</span>
+          </div>
+          <div className="px-2 py-1 bg-[#87D039] rounded-full">
+            <span className="text-black text-[10px] md:text-xs font-bold">AI Generated</span>
           </div>
         </div>
-        
+
+        {/* 비디오 컨테이너 */}
+        <div className="relative rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl bg-zinc-900">
+          {/* 비디오 글로우 보더 */}
+          <div className="absolute -inset-[1px] bg-gradient-to-r from-violet-500 via-purple-500 to-violet-500 rounded-2xl md:rounded-3xl opacity-50 blur-sm" />
+          
+          {/* 비디오 플레이어 */}
+          <div className="relative aspect-video bg-black rounded-2xl md:rounded-3xl overflow-hidden">
+            <video
+              src="/samples/demo-hero.mp4"
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-full h-full object-contain"
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+            />
+            
+            {/* 비디오 오버레이 그라데이션 */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
+            
+            {/* 재생 상태 인디케이터 */}
+            <div className="absolute bottom-4 left-4 flex items-center gap-2">
+              <div className={`w-3 h-3 rounded-full ${isPlaying ? 'bg-[#87D039] animate-pulse' : 'bg-zinc-500'}`} />
+              <span className="text-white/80 text-xs font-medium">{isPlaying ? '재생 중' : '일시정지'}</span>
+            </div>
+
+            {/* 우측 하단 정보 */}
+            <div className="absolute bottom-4 right-4 flex items-center gap-2">
+              <div className="px-2 py-1 bg-black/60 backdrop-blur-sm rounded-lg">
+                <span className="text-white/80 text-xs">8초 · 1080p</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* 하단 정보 */}
-        <div className="p-4 md:p-5 bg-zinc-900 border-t border-zinc-800">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-white font-bold text-sm md:text-base">AI 360° 상품 비디오</h3>
-              <p className="text-zinc-400 text-xs md:text-sm mt-0.5">4장의 이미지로 생성된 회전 영상</p>
+        <div className={`mt-4 md:mt-6 flex flex-col md:flex-row items-center justify-between gap-4 transition-all duration-500 delay-200 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+          <div className="text-center md:text-left">
+            <h3 className="text-white font-bold text-base md:text-lg">AI 360° 상품 비디오</h3>
+            <p className="text-zinc-400 text-xs md:text-sm mt-1">4장의 이미지로 생성된 프리미엄 회전 영상</p>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 rounded-full">
+              <span className="text-zinc-300 text-xs">30 크레딧</span>
             </div>
             <button
-              onClick={onClose}
-              className="px-4 py-2 bg-[#87D039] text-black rounded-full text-xs md:text-sm font-bold hover:bg-[#9AE045] transition-colors"
+              onClick={() => document.getElementById('studio')?.scrollIntoView({ behavior: 'smooth' }) || handleClose()}
+              className="px-5 py-2.5 bg-[#87D039] text-black rounded-full text-sm font-bold hover:bg-[#9AE045] transition-all hover:scale-105 active:scale-95"
             >
-              닫기
+              지금 만들기
             </button>
+          </div>
+        </div>
+
+        {/* 기능 설명 */}
+        <div className={`mt-6 grid grid-cols-3 gap-3 md:gap-4 transition-all duration-500 delay-300 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+          <div className="text-center p-3 md:p-4 bg-white/5 rounded-xl md:rounded-2xl border border-white/10">
+            <div className="text-xl md:text-2xl mb-1">🎯</div>
+            <p className="text-white text-xs md:text-sm font-medium">정확한 재현</p>
+            <p className="text-zinc-500 text-[10px] md:text-xs mt-0.5">상품 디테일 유지</p>
+          </div>
+          <div className="text-center p-3 md:p-4 bg-white/5 rounded-xl md:rounded-2xl border border-white/10">
+            <div className="text-xl md:text-2xl mb-1">⚡</div>
+            <p className="text-white text-xs md:text-sm font-medium">빠른 생성</p>
+            <p className="text-zinc-500 text-[10px] md:text-xs mt-0.5">약 2-5분 소요</p>
+          </div>
+          <div className="text-center p-3 md:p-4 bg-white/5 rounded-xl md:rounded-2xl border border-white/10">
+            <div className="text-xl md:text-2xl mb-1">🎬</div>
+            <p className="text-white text-xs md:text-sm font-medium">고화질 출력</p>
+            <p className="text-zinc-500 text-[10px] md:text-xs mt-0.5">1080p MP4</p>
           </div>
         </div>
       </div>
