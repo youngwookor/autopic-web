@@ -390,6 +390,29 @@ function GeneratePageContent() {
 
             {/* Generate Button */}
             <div className="p-6 border-t border-zinc-100">
+              {/* 크레딧 부족 경고 */}
+              {(balance?.credits || 0) < requiredCredits && (
+                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center shrink-0">
+                      <Zap size={16} className="text-red-500" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-red-800">크레딧이 부족합니다</p>
+                      <p className="text-xs text-red-600 mt-1">
+                        현재 {formatNumber(balance?.credits || 0)}크레딧 · 필요 {requiredCredits}크레딧
+                      </p>
+                      <a 
+                        href="/#pricing" 
+                        className="inline-flex items-center gap-1 mt-2 text-xs font-bold text-red-600 hover:text-red-700 underline"
+                      >
+                        크레딧 충전하기 →
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               <button 
                 onClick={handleGenerate}
                 disabled={!canGenerate}

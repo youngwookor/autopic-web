@@ -104,6 +104,10 @@ export default function MyPage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // 구독 취소 모달 상태
+  const [showCancelSubscriptionModal, setShowCancelSubscriptionModal] = useState(false);
+  const [isCancellingSubscription, setIsCancellingSubscription] = useState(false);
+
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
   // 데이터 로드 함수
@@ -223,6 +227,42 @@ export default function MyPage() {
     } finally {
       setIsDeleting(false);
       setShowDeleteModal(false);
+    }
+  };
+
+  // 구독 취소 처리
+  const handleCancelSubscription = async (immediate: boolean = false) => {
+    if (!user?.id) return;
+    
+    setIsCancellingSubscription(true);
+    try {
+      const response = await fetch(`${API_URL}/api/subscription/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          immediate: immediate,
+          reason: '사용자 직접 취소'
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        toast.success(immediate ? '구독이 즉시 취소되었습니다' : '구독 기간 종료 후 취소됩니다');
+        // 구독 정보 새로고침
+        if (user?.id) {
+          await loadData(user.id);
+        }
+      } else {
+        toast.error(result.error || '구독 취소에 실패했습니다');
+      }
+    } catch (error) {
+      console.error('Cancel subscription error:', error);
+      toast.error('구독 취소 중 오류가 발생했습니다');
+    } finally {
+      setIsCancellingSubscription(false);
+      setShowCancelSubscriptionModal(false);
     }
   };
 
@@ -455,6 +495,19 @@ export default function MyPage() {
                       </>
                     )}
                   </div>
+
+                  {/* 구독 취소 버튼 */}
+                  {subscription.status === 'active' && !subscription.cancel_at_period_end && (
+                    <div className="pt-4 border-t border-zinc-100">
+                      <button
+                        onClick={() => setShowCancelSubscriptionModal(true)}
+                        className="flex items-center gap-2 text-sm text-zinc-500 hover:text-red-500 transition"
+                      >
+                        <XCircle size={16} />
+                        <span>구독 취소하기</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-8">
@@ -787,6 +840,79 @@ export default function MyPage() {
                 className="flex-1 py-3 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isDeleting ? '처리 중...' : '회원탈퇴'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 구독 취소 확인 모달 */}
+      {showCancelSubscriptionModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 md:p-8">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
+                  <XCircle size={24} className="text-orange-600" />
+                </div>
+                <h3 className="text-xl font-bold text-zinc-900">구독 취소</h3>
+              </div>
+              <button 
+                onClick={() => setShowCancelSubscriptionModal(false)}
+                className="p-2 hover:bg-zinc-100 rounded-full transition"
+                disabled={isCancellingSubscription}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              <p className="text-zinc-600">
+                정말로 구독을 취소하시겠습니까?
+              </p>
+              
+              <div className="bg-zinc-50 rounded-xl p-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <Crown size={20} className="text-purple-500" />
+                  <span className="font-bold">{subscription?.plan_name} 플랜</span>
+                </div>
+                <p className="text-sm text-zinc-500">
+                  월 {subscription?.monthly_credits?.toLocaleString()} 크레딧 · ₩{subscription?.price?.toLocaleString()}/월
+                </p>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <p className="text-sm text-blue-700">
+                  현재 기간 종료 후 취소를 선택하면 <strong>
+                  {subscription?.current_period_end
+                    ? new Date(subscription.current_period_end).toLocaleDateString('ko-KR')
+                    : '-'}
+                  </strong>까지 계속 이용할 수 있습니다.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <button
+                onClick={() => handleCancelSubscription(false)}
+                disabled={isCancellingSubscription}
+                className="w-full py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition disabled:opacity-50"
+              >
+                {isCancellingSubscription ? '처리 중...' : '기간 종료 후 취소'}
+              </button>
+              <button
+                onClick={() => handleCancelSubscription(true)}
+                disabled={isCancellingSubscription}
+                className="w-full py-3 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition disabled:opacity-50"
+              >
+                {isCancellingSubscription ? '처리 중...' : '즉시 취소 (환불 불가)'}
+              </button>
+              <button
+                onClick={() => setShowCancelSubscriptionModal(false)}
+                disabled={isCancellingSubscription}
+                className="w-full py-3 bg-zinc-100 text-zinc-700 font-bold rounded-xl hover:bg-zinc-200 transition disabled:opacity-50"
+              >
+                다음에 하기
               </button>
             </div>
           </div>
