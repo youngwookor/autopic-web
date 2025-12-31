@@ -1442,6 +1442,52 @@ export default function Studio() {
                   닫기
                 </button>
                 <button
+                  onClick={async () => {
+                    try {
+                      const videoUrlFull = `${API_URL}/api/video/download/${videoId}`;
+                      
+                      // Web Share API 지원 시
+                      if (navigator.share) {
+                        // 비디오 파일 공유 시도
+                        try {
+                          const response = await fetch(videoUrlFull);
+                          const blob = await response.blob();
+                          const file = new File([blob], `autopic_360_${videoId?.slice(0, 8)}.mp4`, { type: 'video/mp4' });
+                          
+                          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                            await navigator.share({
+                              files: [file],
+                              title: 'AUTOPIC 360° 비디오',
+                              text: 'AI로 생성한 360° 상품 회전 비디오',
+                            });
+                            return;
+                          }
+                        } catch (fileErr) {
+                          console.log('File share failed, trying URL share');
+                        }
+                        
+                        // URL 공유 폴백
+                        await navigator.share({
+                          title: 'AUTOPIC 360° 비디오',
+                          text: 'AI로 생성한 360° 상품 회전 비디오',
+                          url: videoUrlFull,
+                        });
+                      } else {
+                        // 클립보드 복사
+                        await navigator.clipboard.writeText(videoUrlFull);
+                        toast.success('비디오 링크가 복사되었습니다');
+                      }
+                    } catch (err) {
+                      console.error('Share failed:', err);
+                      toast.error('공유에 실패했습니다');
+                    }
+                  }}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg text-xs md:text-sm font-bold hover:bg-blue-600 transition-colors flex items-center gap-1.5"
+                >
+                  <Share2 size={14} />
+                  공유
+                </button>
+                <button
                   onClick={() => {
                     handleVideoDownload();
                     setShowVideoViewer(false);
@@ -1460,7 +1506,7 @@ export default function Studio() {
       {/* 샘플 비디오 보기 모달 */}
       {showSampleModal && (
         <div 
-          className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4"
+          className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setShowSampleModal(false)}
         >
           <div 

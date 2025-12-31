@@ -12,7 +12,8 @@ import {
   User, CreditCard, Image, Settings, LogOut, 
   Zap, Crown, ChevronRight,
   ArrowLeft, Sparkles, Key, Monitor, Trash2, AlertTriangle, X,
-  Clock, Download, Info, CalendarDays, RefreshCw, XCircle, Check
+  Clock, Download, Info, CalendarDays, RefreshCw, XCircle, Check,
+  Video, Play, Loader2
 } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -42,6 +43,16 @@ interface ApiKey {
   key_preview: string;
   is_active: boolean;
   created_at: string;
+}
+
+interface VideoGeneration {
+  id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  progress: number;
+  video_url: string | null;
+  created_at: string;
+  completed_at: string | null;
+  error_message: string | null;
 }
 
 // 구독 정보 인터페이스
@@ -96,6 +107,8 @@ export default function MyPage() {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [profile, setProfile] = useState<any>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [videoHistory, setVideoHistory] = useState<VideoGeneration[]>([]);
+  const [loadingVideos, setLoadingVideos] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -159,6 +172,19 @@ export default function MyPage() {
         }
       } catch (e) {
         console.log('Subscription load failed:', e);
+      }
+
+      // 비디오 히스토리 로드
+      try {
+        const videoResponse = await fetch(`${API_URL}/api/video/history/${userId}?limit=10`);
+        if (videoResponse.ok) {
+          const videoData = await videoResponse.json();
+          if (videoData.success) {
+            setVideoHistory(videoData.videos || []);
+          }
+        }
+      } catch (e) {
+        console.log('Video history load failed:', e);
       }
     } catch (error) {
       console.error('Data load error:', error);
@@ -580,6 +606,87 @@ export default function MyPage() {
 
         {activeTab === 'generations' && (
           <div className="space-y-6">
+            {/* 360° 비디오 히스토리 */}
+            {videoHistory.length > 0 && (
+              <div className="bg-white rounded-2xl md:rounded-3xl border border-zinc-200 p-6 md:p-8">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center">
+                      <Video size={20} className="text-white" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg">360° 비디오</h3>
+                      <p className="text-xs text-zinc-500">생성 후 7일간 보관</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {videoHistory.map((video) => (
+                    <div key={video.id} className="flex items-center gap-4 p-4 bg-zinc-50 rounded-xl">
+                      {/* 썩네일/상태 */}
+                      <div className="w-20 h-20 bg-zinc-200 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
+                        {video.status === 'completed' && video.video_url ? (
+                          <div className="relative w-full h-full bg-zinc-900 flex items-center justify-center">
+                            <Play size={24} className="text-white" />
+                          </div>
+                        ) : video.status === 'processing' || video.status === 'pending' ? (
+                          <div className="relative w-full h-full bg-violet-100 flex items-center justify-center">
+                            <Loader2 size={24} className="text-violet-600 animate-spin" />
+                          </div>
+                        ) : (
+                          <div className="relative w-full h-full bg-red-100 flex items-center justify-center">
+                            <XCircle size={24} className="text-red-500" />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 정보 */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+                            video.status === 'completed' ? 'bg-green-100 text-green-700' :
+                            video.status === 'processing' ? 'bg-violet-100 text-violet-700' :
+                            video.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-red-100 text-red-700'
+                          }`}>
+                            {video.status === 'completed' ? '완료' :
+                             video.status === 'processing' ? `처리중 ${video.progress}%` :
+                             video.status === 'pending' ? '대기중' : '실패'}
+                          </span>
+                          {video.status === 'completed' && (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${getExpiryColor(video.created_at)}`}>
+                              {formatRemainingTime(video.created_at)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm font-medium truncate">360° 회전 비디오</p>
+                        <p className="text-xs text-zinc-500">{formatDate(video.created_at)}</p>
+                        {video.error_message && (
+                          <p className="text-xs text-red-500 mt-1">{video.error_message}</p>
+                        )}
+                      </div>
+
+                      {/* 다운로드 버튼 */}
+                      {video.status === 'completed' && video.video_url && (
+                        <a
+                          href={`${API_URL}${video.video_url}`}
+                          download={`autopic_360_${video.id.slice(0, 8)}.mp4`}
+                          className="p-3 bg-green-500 text-white rounded-xl hover:bg-green-600 transition shrink-0"
+                        >
+                          <Download size={18} />
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <p className="text-xs text-zinc-400 mt-4 text-center">
+                  비디오는 생성 후 7일간 서버에 저장됩니다
+                </p>
+              </div>
+            )}
+
             {/* 7일 보관 안내 배너 */}
             <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 md:p-6">
               <div className="flex items-start gap-3">

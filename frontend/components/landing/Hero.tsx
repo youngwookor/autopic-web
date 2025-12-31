@@ -105,9 +105,15 @@ export default function Hero() {
           <div 
             className={`flex justify-center mb-6 transition-all duration-700 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}
           >
-            <div className="inline-flex items-center gap-2 bg-black text-white text-xs font-medium px-3 py-1.5 rounded-full">
-              <span className="w-1.5 h-1.5 bg-[#87D039] rounded-full animate-pulse" />
-              AI 이미지 생성
+            <div className="flex items-center gap-2">
+              <div className="inline-flex items-center gap-2 bg-black text-white text-xs font-medium px-3 py-1.5 rounded-full">
+                <span className="w-1.5 h-1.5 bg-[#87D039] rounded-full animate-pulse" />
+                AI 이미지
+              </div>
+              <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-xs font-bold px-3 py-1.5 rounded-full">
+                360° 비디오
+                <span className="px-1 py-0.5 bg-white/20 rounded text-[10px]">NEW</span>
+              </div>
             </div>
           </div>
 
@@ -124,7 +130,7 @@ export default function Hero() {
           <p 
             className={`text-zinc-500 text-base text-center mb-6 transition-all duration-700 delay-200 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}
           >
-            AI가 3초 만에 스튜디오 퀄리티<br />상품 사진을 만들어드립니다
+            AI가 3초 만에 상품 이미지 4장과<br />360° 회전 비디오를 만들어드립니다
           </p>
 
           {/* Image Card */}
@@ -180,19 +186,24 @@ export default function Hero() {
           </div>
 
           {/* Stats */}
-          <div className={`flex items-center justify-center gap-6 transition-all duration-700 delay-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}>
+          <div className={`flex items-center justify-center gap-4 transition-all duration-700 delay-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}>
             <div className="text-center">
-              <div className="text-xl font-bold text-zinc-900">50K+</div>
+              <div className="text-lg font-bold text-zinc-900">50K+</div>
               <div className="text-[10px] text-zinc-500">생성된 이미지</div>
             </div>
             <div className="w-px h-8 bg-zinc-200" />
             <div className="text-center">
-              <div className="text-xl font-bold text-zinc-900">3초</div>
+              <div className="text-lg font-bold text-zinc-900">3초</div>
               <div className="text-[10px] text-zinc-500">생성시간</div>
             </div>
             <div className="w-px h-8 bg-zinc-200" />
             <div className="text-center">
-              <div className="text-xl font-bold text-zinc-900">98%</div>
+              <div className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-600 to-purple-600">360°</div>
+              <div className="text-[10px] text-zinc-500">회전 비디오</div>
+            </div>
+            <div className="w-px h-8 bg-zinc-200" />
+            <div className="text-center">
+              <div className="text-lg font-bold text-zinc-900">98%</div>
               <div className="text-[10px] text-zinc-500">만족도</div>
             </div>
           </div>
@@ -208,10 +219,16 @@ export default function Hero() {
             <div>
               {/* Badge */}
               <div 
-                className={`inline-flex items-center gap-2 bg-black text-white text-xs font-medium px-4 py-2 rounded-full mb-8 transition-all duration-700 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}
+                className={`flex items-center gap-3 mb-8 transition-all duration-700 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}
               >
-                <span className="w-1.5 h-1.5 bg-[#87D039] rounded-full animate-pulse" />
-                AI 상품 이미지 생성 플랫폼
+                <div className="inline-flex items-center gap-2 bg-black text-white text-xs font-medium px-4 py-2 rounded-full">
+                  <span className="w-1.5 h-1.5 bg-[#87D039] rounded-full animate-pulse" />
+                  AI 상품 이미지 생성
+                </div>
+                <div className="inline-flex items-center gap-2 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-xs font-bold px-4 py-2 rounded-full">
+                  360° 비디오
+                  <span className="px-1.5 py-0.5 bg-white/20 rounded text-[10px]">NEW</span>
+                </div>
               </div>
 
               {/* Main Title */}
@@ -228,7 +245,7 @@ export default function Hero() {
                 className={`text-xl text-zinc-500 mb-10 max-w-md leading-relaxed transition-all duration-700 delay-200 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}
               >
                 스튜디오 없이, 모델 없이<br />
-                AI가 3초 만에 프로 퀄리티 상품 사진을 만들어드립니다
+                AI가 3초 만에 상품 이미지 4장과 360° 회전 비디오를 만들어드립니다
               </p>
 
               {/* CTA Buttons */}
@@ -255,20 +272,25 @@ export default function Hero() {
 
               {/* Stats */}
               <div 
-                className={`flex items-center gap-10 transition-all duration-700 delay-400 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}
+                className={`flex items-center gap-8 transition-all duration-700 delay-400 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}
               >
                 <div>
-                  <div className="text-4xl font-bold text-zinc-900">50K+</div>
+                  <div className="text-3xl font-bold text-zinc-900">50K+</div>
                   <div className="text-sm text-zinc-500">생성된 이미지</div>
                 </div>
                 <div className="w-px h-12 bg-zinc-200" />
                 <div>
-                  <div className="text-4xl font-bold text-zinc-900">3초</div>
+                  <div className="text-3xl font-bold text-zinc-900">3초</div>
                   <div className="text-sm text-zinc-500">평균 생성시간</div>
                 </div>
                 <div className="w-px h-12 bg-zinc-200" />
                 <div>
-                  <div className="text-4xl font-bold text-zinc-900">98%</div>
+                  <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-600 to-purple-600">360°</div>
+                  <div className="text-sm text-zinc-500">회전 비디오</div>
+                </div>
+                <div className="w-px h-12 bg-zinc-200" />
+                <div>
+                  <div className="text-3xl font-bold text-zinc-900">98%</div>
                   <div className="text-sm text-zinc-500">고객 만족도</div>
                 </div>
               </div>

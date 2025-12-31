@@ -2736,6 +2736,12 @@ async def generate_video(request: VideoGenerateRequest):
 
 async def process_video_generation(video_id: str, user_id: str, images: List[str]):
     """백그라운드에서 비디오 생성 처리"""
+    # 환경변수 백업 (이미지 생성 API와 충돌 방지)
+    _old_vertexai = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI")
+    _old_credentials = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    _old_project = os.environ.get("GOOGLE_CLOUD_PROJECT")
+    _old_location = os.environ.get("GOOGLE_CLOUD_LOCATION")
+    
     try:
         # 상태 업데이트: processing
         supabase.table("video_generations").update({
@@ -2888,6 +2894,28 @@ REQUIREMENTS:
         
         # 크레딧 환불
         await refund_video_credits(user_id, VIDEO_GENERATION_CREDITS, video_id)
+    
+    finally:
+        # 환경변수 복구 (이미지 생성 API 정상화)
+        if _old_vertexai is None:
+            os.environ.pop("GOOGLE_GENAI_USE_VERTEXAI", None)
+        else:
+            os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = _old_vertexai
+        
+        if _old_credentials is None:
+            os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+        else:
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = _old_credentials
+        
+        if _old_project is None:
+            os.environ.pop("GOOGLE_CLOUD_PROJECT", None)
+        else:
+            os.environ["GOOGLE_CLOUD_PROJECT"] = _old_project
+        
+        if _old_location is None:
+            os.environ.pop("GOOGLE_CLOUD_LOCATION", None)
+        else:
+            os.environ["GOOGLE_CLOUD_LOCATION"] = _old_location
 
 
 async def refund_video_credits(user_id: str, credits: int, video_id: str):
