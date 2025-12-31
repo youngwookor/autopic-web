@@ -21,6 +21,7 @@ export default function Footer() {
               <p><span className="text-zinc-500">사업자등록번호:</span> 705-23-02252</p>
               <p><span className="text-zinc-500">주소:</span> 경기도 부천시 원미구 송내대로265번길 53, 8층 804,805호</p>
               <p><span className="text-zinc-500">이메일:</span> support@autopic.app</p>
+              <p><span className="text-zinc-500">전화:</span> 010-7470-8283</p>
             </div>
           </div>
           
@@ -52,6 +53,9 @@ export default function Footer() {
             </Link>
             <a href="mailto:support@autopic.app">
               <Mail size={16} className="hover:text-black cursor-pointer transition-colors md:w-[18px] md:h-[18px]" />
+            </a>
+            <a href="tel:010-7470-8283">
+              <Phone size={16} className="hover:text-black cursor-pointer transition-colors md:w-[18px] md:h-[18px]" />
             </a>
           </div>
         </div>
