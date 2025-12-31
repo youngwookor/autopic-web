@@ -464,10 +464,13 @@ export default function Studio() {
     return new Blob([byteArray], { type: mimeType });
   };
 
-  // 공유 기능
+  // 공유 기능 - PC/모바일 분리 처리
   const handleShare = async (type: 'link' | 'kakao') => {
     const image = generatedImages[selectedImageIndex];
     if (!image) return;
+
+    // 모바일 감지
+    const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
     if (type === 'link') {
       // 이미지 복사하기
@@ -490,32 +493,48 @@ export default function Studio() {
         toast.error('이미지 복사에 실패했습니다. 다운로드를 이용해주세요.');
       }
     } else if (type === 'kakao') {
-      // 이미지 공유하기 (Web Share API)
-      try {
-        const blob = base64ToBlob(image, 'image/jpeg');
-        const file = new File([blob], `autopic_image_${Date.now()}.jpg`, { type: 'image/jpeg' });
-        
-        // 파일 공유 지원 여부 확인
-        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            title: 'AUTOPIC - AI 상품 이미지',
-            text: 'AI로 생성한 고품질 상품 이미지를 확인해보세요!',
-            files: [file]
-          });
-        } else if (navigator.share) {
-          // 파일 공유 미지원 시 URL만 공유
-          await navigator.share({
-            title: 'AUTOPIC - AI 상품 이미지',
-            text: 'AI로 생성한 고품질 상품 이미지를 확인해보세요!',
-            url: window.location.origin
-          });
-        } else {
-          toast.error('이 브라우저에서는 공유 기능을 지원하지 않습니다');
+      // 이미지 공유하기
+      const blob = base64ToBlob(image, 'image/jpeg');
+      const file = new File([blob], `autopic_image_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      
+      if (isMobileDevice && navigator.share) {
+        // 모바일: Web Share API 사용
+        try {
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              title: 'AUTOPIC - AI 상품 이미지',
+              text: 'AI로 생성한 고품질 상품 이미지를 확인해보세요!',
+              files: [file]
+            });
+          } else {
+            // 파일 공유 미지원 시 URL 공유
+            await navigator.share({
+              title: 'AUTOPIC - AI 상품 이미지',
+              text: 'AI로 생성한 고품질 상품 이미지를 확인해보세요!',
+              url: window.location.origin
+            });
+          }
+        } catch (e) {
+          if ((e as Error).name !== 'AbortError') {
+            console.error('Share error:', e);
+            toast.error('공유에 실패했습니다');
+          }
         }
-      } catch (e) {
-        if ((e as Error).name !== 'AbortError') {
-          console.error('Share error:', e);
-          toast.error('공유에 실패했습니다');
+      } else {
+        // PC: 이미지 다운로드로 대체
+        try {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `autopic_image_${Date.now()}.jpg`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          toast.success('이미지 다운로드 완료! SNS에 직접 업로드해주세요.');
+        } catch (e) {
+          console.error('Download error:', e);
+          toast.error('다운로드에 실패했습니다');
         }
       }
     }
@@ -645,6 +664,18 @@ export default function Studio() {
       }
     };
   }, []);
+
+  // 모달 열림 시 스크롤 방지
+  useEffect(() => {
+    if (showVideoModal || showSampleModal || showVideoViewer || isModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [showVideoModal, showSampleModal, showVideoViewer, isModalOpen]);
 
   const goToPrevImage = () => {
     setSelectedImageIndex((prev) => (prev === 0 ? generatedImages.length - 1 : prev - 1));
@@ -935,7 +966,7 @@ export default function Studio() {
                               className="fixed inset-0 z-10" 
                               onClick={() => setShowShareMenu(false)}
                             />
-                            <div className="absolute right-0 top-full mt-2 bg-white rounded-xl shadow-lg border border-zinc-200 py-2 z-20 min-w-[140px]">
+                            <div className="absolute right-0 top-full mt-2 bg-white rounded-xl shadow-lg border border-zinc-200 py-2 z-20 min-w-[160px]">
                               <button
                                 onClick={() => handleShare('link')}
                                 className="flex items-center gap-3 w-full px-4 py-2.5 text-sm hover:bg-zinc-50 transition"
@@ -948,7 +979,7 @@ export default function Studio() {
                                 className="flex items-center gap-3 w-full px-4 py-2.5 text-sm hover:bg-zinc-50 transition"
                               >
                                 <Share2 size={16} className="text-zinc-500" />
-                                공유하기
+                                {isMobile ? '공유하기' : 'SNS 공유용 다운'}
                               </button>
                             </div>
                           </>
@@ -1329,13 +1360,17 @@ export default function Studio() {
       {/* 360° 비디오 생성 확인 모달 */}
       {showVideoModal && (
         <div 
-          className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center"
           onClick={() => setShowVideoModal(false)}
         >
           <div 
-            className="bg-white rounded-2xl md:rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl"
+            className="bg-white rounded-t-2xl md:rounded-2xl p-6 md:p-8 w-full md:max-w-md shadow-2xl max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}
           >
+            {/* 모바일 드래그 핸들 */}
+            <div className="md:hidden w-full pb-4 flex justify-center -mt-2">
+              <div className="w-10 h-1 bg-zinc-300 rounded-full" />
+            </div>
             <div className="text-center mb-6">
               <div className="w-14 h-14 md:w-16 md:h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <RotateCw size={28} className="text-white md:w-8 md:h-8" />
@@ -1398,13 +1433,17 @@ export default function Studio() {
       {/* 생성된 비디오 뷰어 모달 */}
       {showVideoViewer && videoId && (
         <div 
-          className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4"
+          className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-sm flex items-end md:items-center justify-center"
           onClick={() => setShowVideoViewer(false)}
         >
           <div 
-            className="bg-zinc-900 rounded-t-2xl md:rounded-2xl w-full md:max-w-3xl shadow-2xl overflow-hidden max-h-[90vh] md:max-h-[85vh] flex flex-col"
+            className="bg-zinc-900 rounded-t-2xl md:rounded-2xl w-full md:max-w-3xl shadow-2xl overflow-hidden max-h-[85vh] md:max-h-[85vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
+            {/* 모바일 드래그 핸들 */}
+            <div className="md:hidden w-full py-3 flex justify-center bg-zinc-900">
+              <div className="w-10 h-1 bg-zinc-600 rounded-full" />
+            </div>
             {/* 비디오 플레이어 */}
             <div className="relative aspect-video bg-black flex-shrink-0">
               <video
@@ -1430,26 +1469,30 @@ export default function Studio() {
             </div>
             
             {/* 하단 버튼 */}
-            <div className="p-4 md:p-5 flex items-center justify-between border-t border-zinc-800">
-              <div className="text-zinc-400 text-xs md:text-sm">
-                360° 회전 비디오 · 8초 HD
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowVideoViewer(false)}
-                  className="px-4 py-2 bg-zinc-700 text-white rounded-lg text-xs md:text-sm font-medium hover:bg-zinc-600 transition-colors"
-                >
-                  닫기
-                </button>
-                <button
-                  onClick={async () => {
-                    try {
+            <div className="p-4 md:p-5 border-t border-zinc-800">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div className="text-zinc-400 text-xs md:text-sm text-center md:text-left">
+                  360° 회전 비디오 · 8초 HD
+                </div>
+                <div className="flex gap-2 justify-center md:justify-end">
+                  <button
+                    onClick={() => setShowVideoViewer(false)}
+                    className="px-4 py-2.5 bg-zinc-700 text-white rounded-lg text-xs md:text-sm font-medium hover:bg-zinc-600 transition-colors"
+                  >
+                    닫기
+                  </button>
+                  {/* 공유 버튼 - PC/모바일 분리 처리 */}
+                  <button
+                    onClick={async () => {
                       const videoUrlFull = `${API_URL}/api/video/download/${videoId}`;
                       
-                      // Web Share API 지원 시
-                      if (navigator.share) {
-                        // 비디오 파일 공유 시도
+                      // 모바일인지 감지
+                      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                      
+                      if (isMobileDevice && navigator.share) {
+                        // 모바일: Web Share API 사용
                         try {
+                          // 파일 공유 시도
                           const response = await fetch(videoUrlFull);
                           const blob = await response.blob();
                           const file = new File([blob], `autopic_360_${videoId?.slice(0, 8)}.mp4`, { type: 'video/mp4' });
@@ -1462,41 +1505,45 @@ export default function Studio() {
                             });
                             return;
                           }
-                        } catch (fileErr) {
-                          console.log('File share failed, trying URL share');
+                          
+                          // 파일 공유 실패 시 URL 공유
+                          await navigator.share({
+                            title: 'AUTOPIC 360° 비디오',
+                            text: 'AI로 생성한 360° 상품 회전 비디오',
+                            url: videoUrlFull,
+                          });
+                        } catch (err) {
+                          if ((err as Error).name !== 'AbortError') {
+                            toast.error('공유에 실패했습니다');
+                          }
                         }
-                        
-                        // URL 공유 폴백
-                        await navigator.share({
-                          title: 'AUTOPIC 360° 비디오',
-                          text: 'AI로 생성한 360° 상품 회전 비디오',
-                          url: videoUrlFull,
-                        });
                       } else {
-                        // 클립보드 복사
-                        await navigator.clipboard.writeText(videoUrlFull);
-                        toast.success('비디오 링크가 복사되었습니다');
+                        // PC: 클립보드에 링크 복사
+                        try {
+                          await navigator.clipboard.writeText(videoUrlFull);
+                          toast.success('비디오 링크가 클립보드에 복사되었습니다');
+                        } catch (err) {
+                          // 폴백: prompt로 URL 표시
+                          prompt('비디오 링크를 복사하세요:', videoUrlFull);
+                        }
                       }
-                    } catch (err) {
-                      console.error('Share failed:', err);
-                      toast.error('공유에 실패했습니다');
-                    }
-                  }}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-lg text-xs md:text-sm font-bold hover:bg-blue-600 transition-colors flex items-center gap-1.5"
-                >
-                  <Share2 size={14} />
-                  공유
-                </button>
-                <button
-                  onClick={() => {
-                    handleVideoDownload();
-                    setShowVideoViewer(false);
-                  }}
-                  className="px-4 py-2 bg-green-500 text-white rounded-lg text-xs md:text-sm font-bold hover:bg-green-600 transition-colors flex items-center gap-1.5"
-                >
-                  <Download size={14} />
-                  다운로드
-                </button>
+                    }}
+                    className="px-4 py-2.5 bg-blue-500 text-white rounded-lg text-xs md:text-sm font-bold hover:bg-blue-600 transition-colors flex items-center gap-1.5"
+                  >
+                    <Share2 size={14} />
+                    {isMobile ? '공유' : '링크 복사'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleVideoDownload();
+                      setShowVideoViewer(false);
+                    }}
+                    className="px-4 py-2.5 bg-green-500 text-white rounded-lg text-xs md:text-sm font-bold hover:bg-green-600 transition-colors flex items-center gap-1.5"
+                  >
+                    <Download size={14} />
+                    다운로드
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1506,13 +1553,17 @@ export default function Studio() {
       {/* 샘플 비디오 보기 모달 */}
       {showSampleModal && (
         <div 
-          className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-end md:items-center justify-center"
           onClick={() => setShowSampleModal(false)}
         >
           <div 
-            className="bg-zinc-900 rounded-t-2xl md:rounded-2xl w-full md:max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] md:max-h-[80vh] flex flex-col"
+            className="bg-zinc-900 rounded-t-2xl md:rounded-2xl w-full md:max-w-2xl shadow-2xl overflow-hidden max-h-[85vh] md:max-h-[80vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
+            {/* 모바일 드래그 핸들 */}
+            <div className="md:hidden w-full py-3 flex justify-center bg-zinc-900">
+              <div className="w-10 h-1 bg-zinc-600 rounded-full" />
+            </div>
             {/* 비디오 플레이어 */}
             <div className="relative aspect-video bg-black flex-shrink-0">
               <video

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowRight, Play, X } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 
-// 유튜브 모달 컴포넌트
+// 데모 비디오 모달 컴포넌트
 function VideoModal({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     // ESC 키로 닫기
@@ -23,29 +23,60 @@ function VideoModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div 
-      className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[100] bg-black/95 flex items-end md:items-center justify-center"
       onClick={onClose}
     >
       {/* 닫기 버튼 */}
       <button 
         onClick={onClose}
-        className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors z-10"
+        className="absolute top-4 right-4 p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors z-20"
       >
         <X className="w-6 h-6 text-white" />
       </button>
 
-      {/* 유튜브 쇼츠 (세로 영상) */}
+      {/* 비디오 컨테이너 - 모바일: 하단 시트, PC: 중앙 */}
       <div 
-        className="relative w-full max-w-[350px] aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl"
+        className="relative w-full md:w-auto md:max-w-4xl bg-zinc-900 rounded-t-3xl md:rounded-2xl overflow-hidden shadow-2xl max-h-[90vh] md:max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <iframe
-          src="https://www.youtube.com/embed/K9qcMsMRYfU?autoplay=1&rel=0&modestbranding=1"
-          title="AUTOPIC 데모 영상"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-          className="absolute inset-0 w-full h-full"
-        />
+        {/* 모바일 드래그 핸들 */}
+        <div className="md:hidden w-full py-3 flex justify-center">
+          <div className="w-10 h-1 bg-zinc-600 rounded-full" />
+        </div>
+
+        {/* 비디오 플레이어 */}
+        <div className="relative w-full aspect-video bg-black">
+          <video
+            src="/samples/demo-hero.mp4"
+            autoPlay
+            loop
+            controls
+            playsInline
+            className="w-full h-full object-contain"
+          />
+          
+          {/* 배지 */}
+          <div className="absolute top-3 left-3 px-3 py-1.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-xs font-bold rounded-full flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+            360° 회전 비디오
+          </div>
+        </div>
+        
+        {/* 하단 정보 */}
+        <div className="p-4 md:p-5 bg-zinc-900 border-t border-zinc-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-white font-bold text-sm md:text-base">AI 360° 상품 비디오</h3>
+              <p className="text-zinc-400 text-xs md:text-sm mt-0.5">4장의 이미지로 생성된 회전 영상</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-[#87D039] text-black rounded-full text-xs md:text-sm font-bold hover:bg-[#9AE045] transition-colors"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -181,7 +212,7 @@ export default function Hero() {
               <div className="w-8 h-8 rounded-full bg-white shadow-md flex items-center justify-center hover:shadow-lg transition-shadow">
                 <Play size={12} fill="currentColor" />
               </div>
-              데모 보기
+              360° 영상 보기
             </button>
           </div>
 
@@ -266,7 +297,7 @@ export default function Hero() {
                   <div className="w-12 h-12 rounded-full bg-white shadow-lg flex items-center justify-center hover:shadow-xl transition-shadow hover:scale-105">
                     <Play size={16} fill="currentColor" />
                   </div>
-                  데모 보기
+                  360° 영상 보기
                 </button>
               </div>
 
