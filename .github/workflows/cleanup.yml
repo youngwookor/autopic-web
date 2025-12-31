@@ -44,7 +44,7 @@ jobs:
           response=$(curl -s -w "\n%{http_code}" -X POST \
             -H "X-Cleanup-Secret: ${{ secrets.CLEANUP_SECRET }}" \
             -H "Content-Type: application/json" \
-            "${{ secrets.BACKEND_URL }}/api/subscription/reset-credits")
+            "${{ secrets.BACKEND_URL }}/api/cron/subscription-credit-reset")
           
           http_code=$(echo "$response" | tail -n1)
           body=$(echo "$response" | sed '$d')
@@ -70,4 +70,4 @@ jobs:
           
           echo ""
           echo "=== Credit Reset Status ==="
-          curl -s "${{ secrets.BACKEND_URL }}/api/subscription/reset-status" | jq .
+          curl -s "${{ secrets.BACKEND_URL }}/api/cron/subscription-reset-status" | jq .

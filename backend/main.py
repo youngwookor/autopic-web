@@ -3366,7 +3366,7 @@ async def get_video_info():
 # 구독 크레딧 리셋 (매월 자동 실행)
 # ============================================================================
 
-@app.post("/api/subscription/reset-credits")
+@app.post("/api/cron/subscription-credit-reset")
 async def reset_subscription_credits(
     x_cleanup_secret: str = Header(None, alias="X-Cleanup-Secret")
 ):
@@ -3474,7 +3474,7 @@ async def reset_subscription_credits(
         return {"success": False, "error": str(e)}
 
 
-@app.get("/api/subscription/reset-status")
+@app.get("/api/cron/subscription-reset-status")
 async def get_credit_reset_status():
     """크레딧 리셋 대상 현황 조회"""
     try:
