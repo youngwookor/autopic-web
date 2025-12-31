@@ -12,7 +12,7 @@ import {
   User, CreditCard, Image, Settings, LogOut, 
   Zap, Crown, ChevronRight,
   ArrowLeft, Sparkles, Key, Monitor, Trash2, AlertTriangle, X,
-  Clock, Download, Info
+  Clock, Download, Info, CalendarDays, RefreshCw, XCircle, Check
 } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -42,6 +42,22 @@ interface ApiKey {
   key_preview: string;
   is_active: boolean;
   created_at: string;
+}
+
+// 구독 정보 인터페이스
+interface Subscription {
+  has_subscription: boolean;
+  subscription_id?: string;
+  plan?: string;
+  plan_name?: string;
+  status?: string;
+  monthly_credits?: number;
+  price?: number;
+  current_period_start?: string;
+  current_period_end?: string;
+  next_billing_date?: string;
+  cancel_at_period_end?: boolean;
+  tier?: string;
 }
 
 // 남은 보관 일수 계산 함수
@@ -79,6 +95,7 @@ export default function MyPage() {
   const [usages, setUsages] = useState<Usage[]>([]);
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [profile, setProfile] = useState<any>(null);
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -126,6 +143,19 @@ export default function MyPage() {
           setApiKeys(keysData.keys || []);
         }
       } catch (e) {}
+
+      // 구독 정보 로드
+      try {
+        const subscriptionResponse = await fetch(`${API_URL}/api/subscription/${userId}`);
+        if (subscriptionResponse.ok) {
+          const subscriptionData = await subscriptionResponse.json();
+          if (subscriptionData.success) {
+            setSubscription(subscriptionData);
+          }
+        }
+      } catch (e) {
+        console.log('Subscription load failed:', e);
+      }
     } catch (error) {
       console.error('Data load error:', error);
     }
@@ -319,6 +349,129 @@ export default function MyPage() {
                 <div className="flex items-center gap-2"><Crown size={16} className="text-purple-400" /><span className="text-zinc-400 text-sm">Premium</span><span className="font-bold">{formatNumber(Math.floor(currentCredits / 3))}회</span></div>
               </div>
               <Link href="/#pricing" className="inline-flex items-center gap-2 bg-[#87D039] text-black px-6 py-3 rounded-xl font-bold text-sm hover:bg-[#9AE045] transition">크레딧 충전하기<ChevronRight size={18} /></Link>
+            </div>
+
+            {/* 구독 정보 카드 */}
+            <div className="bg-white rounded-2xl md:rounded-3xl border border-zinc-200 p-6 md:p-8">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <RefreshCw size={20} />
+                  <h3 className="font-bold text-lg">구독 플랜</h3>
+                </div>
+                {subscription?.has_subscription && (
+                  <span className={`text-xs px-2 py-1 rounded-full font-bold ${
+                    subscription.status === 'active' && !subscription.cancel_at_period_end
+                      ? 'bg-green-100 text-green-700'
+                      : subscription.cancel_at_period_end
+                      ? 'bg-orange-100 text-orange-700'
+                      : 'bg-zinc-100 text-zinc-600'
+                  }`}>
+                    {subscription.status === 'active' && !subscription.cancel_at_period_end
+                      ? '구독 중'
+                      : subscription.cancel_at_period_end
+                      ? '취소 예정'
+                      : subscription.status}
+                  </span>
+                )}
+              </div>
+
+              {subscription?.has_subscription ? (
+                <div className="space-y-4">
+                  {/* 플랜 정보 */}
+                  <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-4 border border-purple-100">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center">
+                          <Crown size={20} className="text-white" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-lg">{subscription.plan_name} 플랜</p>
+                          <p className="text-sm text-zinc-500">월 {subscription.monthly_credits?.toLocaleString()} 크레딧</p>
+                        </div>
+                      </div>
+                      <p className="text-xl font-bold">₩{subscription.price?.toLocaleString()}<span className="text-sm font-normal text-zinc-500">/월</span></p>
+                    </div>
+
+                    {/* 기간 정보 */}
+                    <div className="grid grid-cols-2 gap-3 pt-3 border-t border-purple-100">
+                      <div className="flex items-center gap-2 text-sm">
+                        <CalendarDays size={14} className="text-purple-500" />
+                        <span className="text-zinc-600">시작일</span>
+                        <span className="font-medium">
+                          {subscription.current_period_start
+                            ? new Date(subscription.current_period_start).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
+                            : '-'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <Clock size={14} className="text-blue-500" />
+                        <span className="text-zinc-600">다음 결제</span>
+                        <span className="font-medium">
+                          {subscription.next_billing_date
+                            ? new Date(subscription.next_billing_date).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
+                            : '-'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 취소 예정 경고 */}
+                  {subscription.cancel_at_period_end && (
+                    <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle size={18} className="text-orange-500 mt-0.5" />
+                        <div>
+                          <p className="font-medium text-orange-800">구독 취소 예정</p>
+                          <p className="text-sm text-orange-600">
+                            {subscription.current_period_end
+                              ? `${new Date(subscription.current_period_end).toLocaleDateString('ko-KR')} 까지 이용 가능합니다.`
+                              : '기간 종료 후 취소됩니다.'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 플랜 특징 */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-zinc-600">
+                      <Check size={14} className="text-green-500" />
+                      <span>웹 스튜디오 이용</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-zinc-600">
+                      <Check size={14} className="text-green-500" />
+                      <span>우선 처리</span>
+                    </div>
+                    {subscription.plan === 'basic' && (
+                      <>
+                        <div className="flex items-center gap-2 text-sm text-zinc-600">
+                          <Check size={14} className="text-green-500" />
+                          <span>설치형 프로그램</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-zinc-600">
+                          <Check size={14} className="text-green-500" />
+                          <span>API 액세스</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 bg-zinc-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CreditCard size={28} className="text-zinc-400" />
+                  </div>
+                  <p className="text-zinc-500 mb-2">활성화된 구독이 없습니다</p>
+                  <p className="text-sm text-zinc-400 mb-4">정기 구독으로 매달 크레딧을 받아보세요</p>
+                  <Link 
+                    href="/#pricing" 
+                    className="inline-flex items-center gap-2 bg-zinc-900 text-white px-5 py-2.5 rounded-xl font-medium text-sm hover:bg-black transition"
+                  >
+                    구독 플랜 보기
+                    <ChevronRight size={16} />
+                  </Link>
+                </div>
+              )}
             </div>
 
             <div className="bg-white rounded-2xl md:rounded-3xl border border-zinc-200 p-6 md:p-8">

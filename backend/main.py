@@ -2237,6 +2237,394 @@ async def get_cleanup_status():
 
 
 # ============================================================================
+# 구독 관리 API
+# ============================================================================
+
+# 구독 플랜 설정
+SUBSCRIPTION_PLANS = {
+    "starter": {
+        "name": "Starter",
+        "credits": 100,
+        "price": 29000,
+        "features": ["웹 스튜디오", "우선 처리"],
+    },
+    "basic": {
+        "name": "Basic",
+        "credits": 300,
+        "price": 99000,
+        "features": ["웹 스튜디오", "설치형 프로그램", "우선 처리", "API 액세스"],
+    },
+}
+
+
+class SubscriptionCreateRequest(BaseModel):
+    user_id: str
+    plan: str
+    billing_key: Optional[str] = None
+    is_test: bool = False
+
+
+class SubscriptionCancelRequest(BaseModel):
+    user_id: str
+    immediate: bool = False
+    reason: Optional[str] = None
+
+
+class SubscriptionRenewRequest(BaseModel):
+    subscription_id: str
+    payment_key: Optional[str] = None
+
+
+class SubscriptionResponse(BaseModel):
+    success: bool
+    subscription_id: Optional[str] = None
+    plan: Optional[str] = None
+    plan_name: Optional[str] = None
+    status: Optional[str] = None
+    credits_granted: Optional[int] = None
+    monthly_credits: Optional[int] = None
+    price: Optional[int] = None
+    current_period_end: Optional[str] = None
+    next_billing_date: Optional[str] = None
+    cancel_at_period_end: Optional[bool] = None
+    error: Optional[str] = None
+
+
+@app.get("/api/subscription/plans")
+async def get_subscription_plans():
+    """구독 플랜 목록 조회"""
+    return {"success": True, "plans": SUBSCRIPTION_PLANS}
+
+
+@app.get("/api/subscription/{user_id}")
+async def get_subscription_status(user_id: str):
+    """사용자 구독 상태 조회"""
+    try:
+        # RPC 함수 호출 시도
+        try:
+            result = supabase.rpc("get_subscription_status", {"p_user_id": user_id}).execute()
+            if result.data:
+                data = result.data
+                return {
+                    "success": True,
+                    "has_subscription": data.get("has_subscription", False),
+                    "subscription_id": data.get("subscription_id"),
+                    "plan": data.get("plan"),
+                    "plan_name": data.get("plan_name"),
+                    "status": data.get("status"),
+                    "monthly_credits": data.get("monthly_credits"),
+                    "price": data.get("price"),
+                    "current_period_start": data.get("current_period_start"),
+                    "current_period_end": data.get("current_period_end"),
+                    "next_billing_date": data.get("next_billing_date"),
+                    "cancel_at_period_end": data.get("cancel_at_period_end"),
+                    "tier": data.get("tier", "free"),
+                    "credits": data.get("credits", 0),
+                }
+        except Exception:
+            pass
+
+        # RPC 없으면 직접 조회
+        profile_result = (
+            supabase.table("profiles")
+            .select("tier, credits")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+
+        try:
+            subscription_result = (
+                supabase.table("subscriptions")
+                .select("*")
+                .eq("user_id", user_id)
+                .in_("status", ["active", "cancelled"])
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            subscription = subscription_result.data[0] if subscription_result.data else None
+        except Exception:
+            subscription = None
+
+        profile = profile_result.data if profile_result.data else {}
+
+        if subscription:
+            return {
+                "success": True,
+                "has_subscription": True,
+                "subscription_id": subscription.get("id"),
+                "plan": subscription.get("plan"),
+                "plan_name": subscription.get("plan_name"),
+                "status": subscription.get("status"),
+                "monthly_credits": subscription.get("monthly_credits"),
+                "price": subscription.get("price"),
+                "current_period_start": subscription.get("current_period_start"),
+                "current_period_end": subscription.get("current_period_end"),
+                "next_billing_date": subscription.get("next_billing_date"),
+                "cancel_at_period_end": subscription.get("cancel_at_period_end", False),
+                "tier": profile.get("tier", "free"),
+                "credits": profile.get("credits", 0),
+            }
+
+        return {
+            "success": True,
+            "has_subscription": False,
+            "tier": profile.get("tier", "free"),
+            "credits": profile.get("credits", 0),
+        }
+
+    except Exception as e:
+        print(f"구독 상태 조회 오류: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/subscription/create", response_model=SubscriptionResponse)
+async def create_subscription(request: SubscriptionCreateRequest):
+    """구독 생성 (테스트용 수동 생성 포함)"""
+    if request.plan not in SUBSCRIPTION_PLANS:
+        return SubscriptionResponse(success=False, error="잘못된 플랜입니다")
+
+    try:
+        plan_info = SUBSCRIPTION_PLANS[request.plan]
+        period_end = (datetime.now() + timedelta(days=30)).isoformat()
+
+        # 이미 활성 구독이 있는지 확인
+        try:
+            existing = (
+                supabase.table("subscriptions")
+                .select("id")
+                .eq("user_id", request.user_id)
+                .eq("status", "active")
+                .execute()
+            )
+            if existing.data:
+                return SubscriptionResponse(
+                    success=False, error="이미 활성화된 구독이 있습니다"
+                )
+        except Exception:
+            pass
+
+        # 구독 생성
+        subscription_data = {
+            "user_id": request.user_id,
+            "plan": request.plan,
+            "plan_name": plan_info["name"],
+            "monthly_credits": plan_info["credits"],
+            "price": plan_info["price"],
+            "billing_key": request.billing_key,
+            "status": "active",
+            "current_period_start": datetime.now().isoformat(),
+            "current_period_end": period_end,
+            "next_billing_date": period_end,
+            "last_credit_granted_at": datetime.now().isoformat(),
+            "credits_granted_this_period": plan_info["credits"],
+        }
+
+        insert_result = (
+            supabase.table("subscriptions").insert(subscription_data).execute()
+        )
+
+        if not insert_result.data:
+            return SubscriptionResponse(success=False, error="구독 생성 실패")
+
+        subscription_id = insert_result.data[0]["id"]
+
+        # 프로필 tier 업데이트
+        supabase.table("profiles").update({"tier": request.plan}).eq(
+            "id", request.user_id
+        ).execute()
+
+        # 크레딧 추가
+        await add_credits(request.user_id, plan_info["credits"])
+
+        # 히스토리 기록
+        try:
+            supabase.table("subscription_history").insert(
+                {
+                    "subscription_id": subscription_id,
+                    "user_id": request.user_id,
+                    "event_type": "created",
+                    "plan": request.plan,
+                    "amount": plan_info["price"],
+                    "credits_granted": plan_info["credits"],
+                    "metadata": {"is_test": request.is_test},
+                }
+            ).execute()
+        except Exception:
+            pass
+
+        return SubscriptionResponse(
+            success=True,
+            subscription_id=subscription_id,
+            plan=request.plan,
+            plan_name=plan_info["name"],
+            status="active",
+            credits_granted=plan_info["credits"],
+            monthly_credits=plan_info["credits"],
+            price=plan_info["price"],
+            current_period_end=period_end,
+        )
+
+    except Exception as e:
+        print(f"구독 생성 오류: {e}")
+        return SubscriptionResponse(success=False, error=str(e))
+
+
+@app.post("/api/subscription/cancel")
+async def cancel_subscription(request: SubscriptionCancelRequest):
+    """구독 취소"""
+    try:
+        subscription_result = (
+            supabase.table("subscriptions")
+            .select("*")
+            .eq("user_id", request.user_id)
+            .eq("status", "active")
+            .single()
+            .execute()
+        )
+
+        if not subscription_result.data:
+            return {"success": False, "error": "활성화된 구독이 없습니다"}
+
+        subscription = subscription_result.data
+
+        if request.immediate:
+            supabase.table("subscriptions").update(
+                {
+                    "status": "cancelled",
+                    "cancelled_at": datetime.now().isoformat(),
+                    "cancellation_reason": request.reason,
+                }
+            ).eq("id", subscription["id"]).execute()
+
+            supabase.table("profiles").update({"tier": "free"}).eq(
+                "id", request.user_id
+            ).execute()
+        else:
+            supabase.table("subscriptions").update(
+                {
+                    "cancel_at_period_end": True,
+                    "cancelled_at": datetime.now().isoformat(),
+                    "cancellation_reason": request.reason,
+                }
+            ).eq("id", subscription["id"]).execute()
+
+        try:
+            supabase.table("subscription_history").insert(
+                {
+                    "subscription_id": subscription["id"],
+                    "user_id": request.user_id,
+                    "event_type": "cancelled",
+                    "metadata": {"immediate": request.immediate, "reason": request.reason},
+                }
+            ).execute()
+        except Exception:
+            pass
+
+        return {
+            "success": True,
+            "subscription_id": subscription["id"],
+            "immediate": request.immediate,
+            "period_end": subscription.get("current_period_end"),
+            "message": "즉시 취소되었습니다" if request.immediate else "구독 기간 종료 후 취소됩니다",
+        }
+
+    except Exception as e:
+        print(f"구독 취소 오류: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/subscription/renew")
+async def renew_subscription(request: SubscriptionRenewRequest):
+    """구독 갱신 (월 정기결제 성공 시 호출)"""
+    try:
+        subscription_result = (
+            supabase.table("subscriptions")
+            .select("*")
+            .eq("id", request.subscription_id)
+            .single()
+            .execute()
+        )
+
+        if not subscription_result.data:
+            return {"success": False, "error": "구독을 찾을 수 없습니다"}
+
+        subscription = subscription_result.data
+
+        if subscription.get("cancel_at_period_end"):
+            supabase.table("subscriptions").update({"status": "expired"}).eq(
+                "id", request.subscription_id
+            ).execute()
+            supabase.table("profiles").update({"tier": "free"}).eq(
+                "id", subscription["user_id"]
+            ).execute()
+            return {"success": True, "status": "expired"}
+
+        new_period_end = (
+            datetime.fromisoformat(subscription["current_period_end"].replace("Z", "+00:00"))
+            + timedelta(days=30)
+        ).isoformat()
+
+        supabase.table("subscriptions").update(
+            {
+                "current_period_start": subscription["current_period_end"],
+                "current_period_end": new_period_end,
+                "next_billing_date": new_period_end,
+                "last_credit_granted_at": datetime.now().isoformat(),
+                "credits_granted_this_period": subscription["monthly_credits"],
+            }
+        ).eq("id", request.subscription_id).execute()
+
+        await add_credits(subscription["user_id"], subscription["monthly_credits"])
+
+        try:
+            supabase.table("subscription_history").insert(
+                {
+                    "subscription_id": request.subscription_id,
+                    "user_id": subscription["user_id"],
+                    "event_type": "renewed",
+                    "plan": subscription["plan"],
+                    "amount": subscription["price"],
+                    "credits_granted": subscription["monthly_credits"],
+                    "payment_key": request.payment_key,
+                }
+            ).execute()
+        except Exception:
+            pass
+
+        return {
+            "success": True,
+            "subscription_id": request.subscription_id,
+            "status": "renewed",
+            "credits_granted": subscription["monthly_credits"],
+            "new_period_end": new_period_end,
+        }
+
+    except Exception as e:
+        print(f"구독 갱신 오류: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/subscription/history/{user_id}")
+async def get_subscription_history(user_id: str, limit: int = 20):
+    """구독 히스토리 조회"""
+    try:
+        result = (
+            supabase.table("subscription_history")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return {"success": True, "history": result.data or []}
+    except Exception as e:
+        print(f"히스토리 조회 오류: {e}")
+        return {"success": False, "error": str(e)}
+
+
+# ============================================================================
 # 서버 실행
 # ============================================================================
 
