@@ -2625,6 +2625,419 @@ async def get_subscription_history(user_id: str, limit: int = 20):
 
 
 # ============================================================================
+# 360° 비디오 생성 API
+# ============================================================================
+
+# Google Vertex AI 설정 (비디오 생성용)
+GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "")
+GCP_LOCATION = os.getenv("GCP_LOCATION", "us-central1")
+GCP_SERVICE_ACCOUNT_JSON = os.getenv("GCP_SERVICE_ACCOUNT_JSON", "")
+
+# 비디오 생성 비용: 30 크레딧
+VIDEO_GENERATION_CREDITS = 30
+
+# 비디오 저장 경로
+VIDEO_OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "video_outputs")
+os.makedirs(VIDEO_OUTPUT_DIR, exist_ok=True)
+
+
+class VideoGenerateRequest(BaseModel):
+    user_id: str
+    images: List[str]  # base64 이미지 4장 (front, side, back, detail)
+
+
+class VideoStatusRequest(BaseModel):
+    video_id: str
+
+
+@app.post("/api/video/generate")
+async def generate_video(request: VideoGenerateRequest):
+    """360° 비디오 생성 시작"""
+    try:
+        # 1. 크레딧 확인
+        credits_result = (
+            supabase.table("profiles")
+            .select("credits")
+            .eq("id", request.user_id)
+            .single()
+            .execute()
+        )
+        
+        if not credits_result.data:
+            return {"success": False, "error": "사용자를 찾을 수 없습니다"}
+        
+        current_credits = credits_result.data.get("credits", 0)
+        
+        if current_credits < VIDEO_GENERATION_CREDITS:
+            return {
+                "success": False, 
+                "error": f"크레딧이 부족합니다. 필요: {VIDEO_GENERATION_CREDITS}, 보유: {current_credits}"
+            }
+        
+        # 2. 이미지 검증 (4장 필요)
+        if len(request.images) < 3:
+            return {"success": False, "error": "최소 3장의 이미지가 필요합니다"}
+        
+        # 3. 비디오 생성 레코드 생성
+        video_id = str(uuid.uuid4())
+        
+        # 이미지 정보 저장 (base64는 너무 크므로 메타데이터만)
+        source_images_meta = [
+            {"index": i, "view": ["front", "side", "detail", "back"][i]} 
+            for i in range(len(request.images))
+        ]
+        
+        insert_result = supabase.table("video_generations").insert({
+            "id": video_id,
+            "user_id": request.user_id,
+            "source_images": source_images_meta,
+            "duration_seconds": 8,
+            "status": "pending",
+            "progress": 0,
+            "credits_used": VIDEO_GENERATION_CREDITS,
+        }).execute()
+        
+        if not insert_result.data:
+            return {"success": False, "error": "비디오 생성 작업을 시작할 수 없습니다"}
+        
+        # 4. 크레딧 차감
+        supabase.table("profiles").update({
+            "credits": current_credits - VIDEO_GENERATION_CREDITS
+        }).eq("id", request.user_id).execute()
+        
+        # 5. 사용 기록
+        try:
+            supabase.table("usages").insert({
+                "user_id": request.user_id,
+                "action": "video_generation",
+                "credits_used": VIDEO_GENERATION_CREDITS,
+                "metadata": {"video_id": video_id}
+            }).execute()
+        except Exception:
+            pass
+        
+        # 6. 백그라운드에서 비디오 생성 시작
+        asyncio.create_task(
+            process_video_generation(video_id, request.user_id, request.images)
+        )
+        
+        return {
+            "success": True,
+            "video_id": video_id,
+            "status": "pending",
+            "credits_used": VIDEO_GENERATION_CREDITS,
+            "message": "비디오 생성이 시작되었습니다. 약 2-5분 소요됩니다."
+        }
+        
+    except Exception as e:
+        print(f"비디오 생성 시작 오류: {e}")
+        return {"success": False, "error": str(e)}
+
+
+async def process_video_generation(video_id: str, user_id: str, images: List[str]):
+    """백그라운드에서 비디오 생성 처리"""
+    try:
+        # 상태 업데이트: processing
+        supabase.table("video_generations").update({
+            "status": "processing",
+            "progress": 10,
+            "started_at": datetime.now().isoformat()
+        }).eq("id", video_id).execute()
+        
+        # Google Vertex AI 클라이언트 초기화
+        if GCP_SERVICE_ACCOUNT_JSON and os.path.exists(GCP_SERVICE_ACCOUNT_JSON):
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GCP_SERVICE_ACCOUNT_JSON
+        
+        os.environ["GOOGLE_CLOUD_PROJECT"] = GCP_PROJECT_ID
+        os.environ["GOOGLE_CLOUD_LOCATION"] = GCP_LOCATION
+        os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
+        
+        from google.genai.types import GenerateVideosConfig, Image, VideoGenerationReferenceImage
+        
+        client = genai.Client(vertexai=True, project=GCP_PROJECT_ID, location=GCP_LOCATION)
+        
+        # 진행률 업데이트
+        supabase.table("video_generations").update({
+            "progress": 20
+        }).eq("id", video_id).execute()
+        
+        # 이미지 준비 (front, side, back 3장 사용)
+        # images[0] = front, images[1] = side, images[2] = detail, images[3] = back
+        image_indices = [0, 1, 3] if len(images) >= 4 else [0, 1, 2]
+        
+        reference_images = []
+        for idx in image_indices:
+            img_bytes = base64.b64decode(images[idx])
+            ref_img = VideoGenerationReferenceImage(
+                image=Image(
+                    image_bytes=img_bytes,
+                    mime_type="image/png"
+                ),
+                reference_type="asset"
+            )
+            reference_images.append(ref_img)
+        
+        # 프롬프트 (Standard 모델용)
+        prompt = """
+Create a smooth 360-degree product rotation video.
+
+REFERENCE IMAGES:
+- Image 1: FRONT view
+- Image 2: SIDE view
+- Image 3: BACK view
+
+SMOOTH TRANSITION - CRITICAL:
+- NO sudden jumps, cuts, or instant changes between frames
+- Smooth continuous motion throughout the ENTIRE video
+- Each frame must blend naturally and gradually into the next
+- Constant rotation speed - no acceleration, no deceleration, no pauses
+- The product must morph smoothly between angles
+- Like a real turntable rotating at constant speed
+
+ROTATION:
+- Rotate CLOCKWISE only (one direction)
+- Complete exactly ONE full 360-degree rotation
+- 0s: Front → 2s: Side → 4s: Back → 6s: Other side → 8s: Front
+
+REQUIREMENTS:
+- Show ONE product only
+- Pure white background (#FFFFFF)
+- Product stays centered
+- Consistent lighting throughout
+- No morphing of product shape - only rotation
+"""
+        
+        supabase.table("video_generations").update({
+            "progress": 30
+        }).eq("id", video_id).execute()
+        
+        # 비디오 생성 요청
+        operation = client.models.generate_videos(
+            model="veo-3.1-generate-preview",
+            prompt=prompt.strip(),
+            config=GenerateVideosConfig(
+                reference_images=reference_images,
+                aspect_ratio="16:9",
+                number_of_videos=1,
+                duration_seconds=8,
+            ),
+        )
+        
+        # GCP 작업 ID 저장
+        supabase.table("video_generations").update({
+            "gcp_operation_id": str(operation.name) if hasattr(operation, 'name') else None,
+            "progress": 40
+        }).eq("id", video_id).execute()
+        
+        # 작업 완료 대기 (폴링)
+        progress = 40
+        while not operation.done:
+            await asyncio.sleep(15)
+            operation = client.operations.get(operation)
+            progress = min(progress + 5, 90)
+            supabase.table("video_generations").update({
+                "progress": progress
+            }).eq("id", video_id).execute()
+        
+        # 결과 처리
+        if operation.result and operation.result.generated_videos:
+            video = operation.result.generated_videos[0]
+            
+            if video.video and video.video.video_bytes:
+                # 비디오 파일 저장
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"{video_id}_{timestamp}.mp4"
+                filepath = os.path.join(VIDEO_OUTPUT_DIR, filename)
+                
+                with open(filepath, "wb") as f:
+                    f.write(video.video.video_bytes)
+                
+                video_url = f"/api/video/download/{video_id}"
+                
+                supabase.table("video_generations").update({
+                    "status": "completed",
+                    "progress": 100,
+                    "video_url": video_url,
+                    "video_bytes_size": len(video.video.video_bytes),
+                    "completed_at": datetime.now().isoformat()
+                }).eq("id", video_id).execute()
+                
+                print(f"비디오 생성 완료: {video_id}")
+                return
+        
+        # 실패 처리
+        supabase.table("video_generations").update({
+            "status": "failed",
+            "error_message": "비디오 생성 결과가 없습니다",
+            "completed_at": datetime.now().isoformat()
+        }).eq("id", video_id).execute()
+        
+        # 크레딧 환불
+        await refund_video_credits(user_id, VIDEO_GENERATION_CREDITS, video_id)
+        
+    except Exception as e:
+        print(f"비디오 생성 오류: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        supabase.table("video_generations").update({
+            "status": "failed",
+            "error_message": str(e),
+            "completed_at": datetime.now().isoformat()
+        }).eq("id", video_id).execute()
+        
+        # 크레딧 환불
+        await refund_video_credits(user_id, VIDEO_GENERATION_CREDITS, video_id)
+
+
+async def refund_video_credits(user_id: str, credits: int, video_id: str):
+    """비디오 생성 실패 시 크레딧 환불"""
+    try:
+        credits_result = (
+            supabase.table("profiles")
+            .select("credits")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+        
+        if credits_result.data:
+            current_credits = credits_result.data.get("credits", 0)
+            supabase.table("profiles").update({
+                "credits": current_credits + credits
+            }).eq("id", user_id).execute()
+            
+            supabase.table("usages").insert({
+                "user_id": user_id,
+                "action": "video_generation_refund",
+                "credits_used": -credits,
+                "metadata": {"video_id": video_id, "reason": "generation_failed"}
+            }).execute()
+            
+            print(f"크레딧 환불 완료: {user_id}, {credits} 크레딧")
+    except Exception as e:
+        print(f"크레딧 환불 오류: {e}")
+
+
+@app.get("/api/video/status/{video_id}")
+async def get_video_status(video_id: str):
+    """비디오 생성 상태 조회"""
+    try:
+        result = (
+            supabase.table("video_generations")
+            .select("*")
+            .eq("id", video_id)
+            .single()
+            .execute()
+        )
+        
+        if not result.data:
+            return {"success": False, "error": "비디오를 찾을 수 없습니다"}
+        
+        video = result.data
+        
+        return {
+            "success": True,
+            "video_id": video_id,
+            "status": video.get("status"),
+            "progress": video.get("progress", 0),
+            "video_url": video.get("video_url"),
+            "error_message": video.get("error_message"),
+            "created_at": video.get("created_at"),
+            "completed_at": video.get("completed_at"),
+        }
+        
+    except Exception as e:
+        print(f"비디오 상태 조회 오류: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/video/download/{video_id}")
+async def download_video(video_id: str):
+    """비디오 파일 다운로드"""
+    from fastapi.responses import FileResponse
+    
+    try:
+        # 비디오 정보 조회
+        result = (
+            supabase.table("video_generations")
+            .select("*")
+            .eq("id", video_id)
+            .single()
+            .execute()
+        )
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="비디오를 찾을 수 없습니다")
+        
+        video = result.data
+        
+        if video.get("status") != "completed":
+            raise HTTPException(status_code=400, detail="비디오 생성이 완료되지 않았습니다")
+        
+        # 파일 찾기
+        for filename in os.listdir(VIDEO_OUTPUT_DIR):
+            if filename.startswith(video_id):
+                filepath = os.path.join(VIDEO_OUTPUT_DIR, filename)
+                return FileResponse(
+                    filepath,
+                    media_type="video/mp4",
+                    filename=f"autopic_360_{video_id[:8]}.mp4"
+                )
+        
+        raise HTTPException(status_code=404, detail="비디오 파일을 찾을 수 없습니다")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"비디오 다운로드 오류: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/video/history/{user_id}")
+async def get_video_history(user_id: str, limit: int = 20):
+    """사용자의 비디오 생성 히스토리"""
+    try:
+        result = (
+            supabase.table("video_generations")
+            .select("id, status, progress, video_url, created_at, completed_at, error_message")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        
+        return {
+            "success": True,
+            "videos": result.data or []
+        }
+        
+    except Exception as e:
+        print(f"비디오 히스토리 조회 오류: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/video/info")
+async def get_video_info():
+    """비디오 생성 정보 (가격, 사양 등)"""
+    return {
+        "success": True,
+        "credits_required": VIDEO_GENERATION_CREDITS,
+        "duration_seconds": 8,
+        "format": "mp4",
+        "resolution": "16:9 HD",
+        "estimated_time": "2-5분",
+        "features": [
+            "360° 회전 비디오",
+            "8초 길이",
+            "고품질 HD",
+            "흰색 배경",
+            "부드러운 회전"
+        ]
+    }
+
+
+# ============================================================================
 # 서버 실행
 # ============================================================================
 

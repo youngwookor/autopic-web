@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore, useCreditsStore, useGenerationStore } from '@/lib/store';
 import { imagesApi } from '@/lib/api';
@@ -22,8 +22,16 @@ import {
   ChevronRight,
   Maximize2,
   Upload,
-  Trash2
+  Trash2,
+  Video,
+  Play,
+  RotateCw,
+  CheckCircle,
+  AlertCircle
 } from 'lucide-react';
+import axios from 'axios';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.autopic.app';
 
 const AutoPicLogo = ({ className = "w-6 h-6" }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -41,10 +49,13 @@ const categoryOptions = [
   '상의', '하의', '원피스', '가방', '신발', '시계', '주얼리', '아이웨어', '모자', '스카프', '벨트', '소품'
 ];
 
+// 비디오 생성 크레딧
+const VIDEO_CREDITS = 30;
+
 function GeneratePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
   const { balance, fetchBalance } = useCreditsStore();
   const {
     sourceImage,
@@ -70,6 +81,17 @@ function GeneratePageContent() {
   const [loadingText, setLoadingText] = useState('');
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [mobileTab, setMobileTab] = useState<'setup' | 'preview'>('setup');
+
+  // 360° 비디오 관련 상태
+  const [showVideoModal, setShowVideoModal] = useState(false);
+  const [showSampleModal, setShowSampleModal] = useState(false);
+  const [videoGenerating, setVideoGenerating] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [videoId, setVideoId] = useState<string | null>(null);
+  const [videoStatus, setVideoStatus] = useState<'idle' | 'pending' | 'processing' | 'completed' | 'failed'>('idle');
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -99,6 +121,15 @@ function GeneratePageContent() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [previewIndex]);
 
+  // 폴링 정리
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
+  }, []);
+
   const navigatePreview = (dir: number) => {
     setPreviewIndex((prev) => prev !== null ? (prev + dir + 4) % 4 : null);
   };
@@ -120,8 +151,13 @@ function GeneratePageContent() {
     setGeneratedImages([]);
     setProgress(0);
     setMobileTab('preview');
+    
+    // 비디오 상태 초기화
+    setVideoStatus('idle');
+    setVideoId(null);
+    setVideoUrl(null);
+    setVideoError(null);
 
-    // Progress animation
     let p = 0;
     const progressInterval = setInterval(() => {
       p += 1;
@@ -134,7 +170,6 @@ function GeneratePageContent() {
 
     try {
       const startTime = Date.now();
-      // mode 매핑: still -> product, model -> model, editorial_product, editorial_model
       const modeMap: Record<string, string> = {
         'still': 'product',
         'model': 'model',
@@ -188,8 +223,106 @@ function GeneratePageContent() {
     toast.success('전체 다운로드 시작!');
   };
 
+  // 360° 비디오 생성 시작
+  const handleVideoGenerate = async () => {
+    if (!user?.id) {
+      toast.error('로그인이 필요합니다');
+      return;
+    }
+
+    if ((balance?.credits || 0) < VIDEO_CREDITS) {
+      toast.error(`크레딧이 부족합니다. ${VIDEO_CREDITS}크레딧이 필요합니다.`);
+      return;
+    }
+
+    if (generatedImages.length < 4) {
+      toast.error('이미지 4장이 필요합니다');
+      return;
+    }
+
+    setVideoGenerating(true);
+    setVideoProgress(0);
+    setVideoStatus('pending');
+    setVideoError(null);
+    setShowVideoModal(false);
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/video/generate`, {
+        user_id: user.id,
+        images: generatedImages,
+      });
+
+      if (response.data.success) {
+        setVideoId(response.data.video_id);
+        toast.success('비디오 생성이 시작되었습니다!');
+        fetchBalance();
+        
+        // 폴링 시작
+        startPolling(response.data.video_id);
+      } else {
+        setVideoStatus('failed');
+        setVideoError(response.data.error || '비디오 생성 시작 실패');
+        toast.error(response.data.error || '비디오 생성 시작 실패');
+        setVideoGenerating(false);
+      }
+    } catch (err: any) {
+      setVideoStatus('failed');
+      setVideoError(err.response?.data?.error || '비디오 생성 중 오류 발생');
+      toast.error('비디오 생성 중 오류가 발생했습니다');
+      setVideoGenerating(false);
+    }
+  };
+
+  // 비디오 상태 폴링
+  const startPolling = (vidId: string) => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+    }
+
+    pollingRef.current = setInterval(async () => {
+      try {
+        const response = await axios.get(`${API_BASE_URL}/api/video/status/${vidId}`);
+        
+        if (response.data.success) {
+          const { status, progress, video_url, error_message } = response.data;
+          
+          setVideoStatus(status);
+          setVideoProgress(progress || 0);
+          
+          if (status === 'completed') {
+            setVideoUrl(video_url);
+            setVideoGenerating(false);
+            toast.success('360° 비디오 생성 완료!');
+            fetchBalance();
+            if (pollingRef.current) {
+              clearInterval(pollingRef.current);
+            }
+          } else if (status === 'failed') {
+            setVideoError(error_message || '비디오 생성 실패');
+            setVideoGenerating(false);
+            toast.error('비디오 생성에 실패했습니다');
+            if (pollingRef.current) {
+              clearInterval(pollingRef.current);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('폴링 오류:', err);
+      }
+    }, 5000); // 5초마다 체크
+  };
+
+  // 비디오 다운로드
+  const handleVideoDownload = () => {
+    if (videoId) {
+      window.open(`${API_BASE_URL}/api/video/download/${videoId}`, '_blank');
+      toast.success('비디오 다운로드 시작!');
+    }
+  };
+
   const requiredCredits = modelType === 'flash' ? 1 : 3;
   const canGenerate = sourceImage && (balance?.credits || 0) >= requiredCredits && !isGenerating;
+  const canGenerateVideo = generatedImages.length >= 4 && (balance?.credits || 0) >= VIDEO_CREDITS && !videoGenerating;
   const splitTitles = ['Front View', 'Side View', 'Detail', 'Full Shot'];
 
   if (!isAuthenticated) return null;
@@ -453,51 +586,142 @@ function GeneratePageContent() {
               )}
             </div>
 
-            <div 
-              className="flex-1 relative flex items-center justify-center p-6 lg:p-12 overflow-hidden dot-pattern"
-            >
+            <div className="flex-1 relative flex flex-col items-center justify-center p-6 lg:p-12 overflow-hidden dot-pattern">
               {isGenerating ? (
                 <div className="bg-white p-12 rounded-[40px] shadow-2xl text-center border border-zinc-100 max-w-sm w-full animate-fade-in-up">
                   <div className="w-16 h-16 border-4 border-[#87D039] border-t-transparent rounded-full animate-spin mx-auto mb-8"></div>
                   <h3 className="text-2xl font-black mb-2 tracking-tight">이미지 생성 중</h3>
                   <p className="text-zinc-400 text-xs font-bold mb-6">{loadingText}</p>
                   <div className="w-full bg-zinc-100 h-2 rounded-full overflow-hidden">
-                    <div 
-                      className="bg-[#87D039] h-full transition-all duration-300" 
-                      style={{width: `${progress}%`}}
-                    ></div>
+                    <div className="bg-[#87D039] h-full transition-all duration-300" style={{width: `${progress}%`}}></div>
                   </div>
                 </div>
               ) : generatedImages.length > 0 ? (
-                <div className="w-full max-w-4xl grid grid-cols-2 gap-4 p-4 bg-white rounded-[40px] shadow-2xl border border-zinc-100 animate-fade-in-up">
-                  {generatedImages.map((img, idx) => (
-                    <div key={idx} className="relative aspect-square group rounded-3xl overflow-hidden bg-zinc-50 border border-zinc-100 transition-all">
-                      <img 
-                        src={`data:image/png;base64,${img}`} 
-                        alt="" 
-                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
-                      />
-                      <div className="absolute top-3 left-3 bg-black/80 text-white text-[9px] font-black px-2.5 py-1.5 rounded-lg uppercase backdrop-blur-sm tracking-wider">
-                        {splitTitles[idx]}
+                <>
+                  <div className="w-full max-w-4xl grid grid-cols-2 gap-4 p-4 bg-white rounded-[40px] shadow-2xl border border-zinc-100 animate-fade-in-up">
+                    {generatedImages.map((img, idx) => (
+                      <div key={idx} className="relative aspect-square group rounded-3xl overflow-hidden bg-zinc-50 border border-zinc-100 transition-all">
+                        <img 
+                          src={`data:image/png;base64,${img}`} 
+                          alt="" 
+                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
+                        />
+                        <div className="absolute top-3 left-3 bg-black/80 text-white text-[9px] font-black px-2.5 py-1.5 rounded-lg uppercase backdrop-blur-sm tracking-wider">
+                          {splitTitles[idx]}
+                        </div>
+                        
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                          <button 
+                            onClick={() => setPreviewIndex(idx)}
+                            className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-xl"
+                          >
+                            <Maximize2 size={20} />
+                          </button>
+                          <button 
+                            onClick={(e) => handleDownload(e, img, idx)}
+                            className="w-12 h-12 bg-[#87D039] text-black rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-xl"
+                          >
+                            <Download size={20} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 360° 비디오 섹션 */}
+                  <div className="w-full max-w-4xl mt-6 animate-fade-in-up">
+                    <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-3xl p-6 text-white">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center">
+                            <RotateCw size={28} />
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-black">360° 회전 비디오</h3>
+                            <p className="text-white/80 text-xs font-medium mt-1">
+                              생성된 이미지로 360° 회전 비디오를 만들어보세요
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-3">
+                          {/* 비디오 생성 상태에 따른 버튼 */}
+                          {videoStatus === 'idle' && (
+                            <>
+                              <button
+                                onClick={() => setShowSampleModal(true)}
+                                className="px-4 py-2.5 bg-white/20 hover:bg-white/30 rounded-xl text-xs font-bold transition-colors flex items-center gap-2"
+                              >
+                                <Play size={14} /> 샘플 보기
+                              </button>
+                              <button
+                                onClick={() => setShowVideoModal(true)}
+                                disabled={!canGenerateVideo}
+                                className="px-5 py-2.5 bg-white text-purple-600 rounded-xl text-xs font-black hover:bg-white/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                              >
+                                <Video size={14} /> 비디오 만들기 ({VIDEO_CREDITS}크레딧)
+                              </button>
+                            </>
+                          )}
+                          
+                          {(videoStatus === 'pending' || videoStatus === 'processing') && (
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-2">
+                                <Loader2 size={16} className="animate-spin" />
+                                <span className="text-sm font-bold">생성 중... {videoProgress}%</span>
+                              </div>
+                              <div className="w-32 h-2 bg-white/20 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-white transition-all duration-300" 
+                                  style={{width: `${videoProgress}%`}}
+                                />
+                              </div>
+                            </div>
+                          )}
+                          
+                          {videoStatus === 'completed' && (
+                            <button
+                              onClick={handleVideoDownload}
+                              className="px-5 py-2.5 bg-white text-green-600 rounded-xl text-xs font-black hover:bg-white/90 transition-colors flex items-center gap-2"
+                            >
+                              <CheckCircle size={14} /> 다운로드
+                            </button>
+                          )}
+                          
+                          {videoStatus === 'failed' && (
+                            <div className="flex items-center gap-3">
+                              <span className="text-red-200 text-xs font-bold flex items-center gap-1">
+                                <AlertCircle size={14} /> 실패
+                              </span>
+                              <button
+                                onClick={() => {
+                                  setVideoStatus('idle');
+                                  setVideoError(null);
+                                }}
+                                className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl text-xs font-bold transition-colors"
+                              >
+                                다시 시도
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
-                        <button 
-                          onClick={() => setPreviewIndex(idx)}
-                          className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-xl"
-                        >
-                          <Maximize2 size={20} />
-                        </button>
-                        <button 
-                          onClick={(e) => handleDownload(e, img, idx)}
-                          className="w-12 h-12 bg-[#87D039] text-black rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-xl"
-                        >
-                          <Download size={20} />
-                        </button>
-                      </div>
+                      {/* 진행 상태 텍스트 */}
+                      {(videoStatus === 'pending' || videoStatus === 'processing') && (
+                        <p className="mt-4 text-white/70 text-xs text-center">
+                          약 2-5분 소요됩니다. 페이지를 닫지 마세요.
+                        </p>
+                      )}
+                      
+                      {videoError && (
+                        <p className="mt-4 text-red-200 text-xs text-center">
+                          {videoError}
+                        </p>
+                      )}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                </>
               ) : error ? (
                 <div className="bg-white p-12 rounded-[40px] shadow-xl text-center border border-zinc-100 max-w-sm w-full">
                   <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -580,6 +804,119 @@ function GeneratePageContent() {
           >
             <X size={28} strokeWidth={1.5}/>
           </button>
+        </div>
+      )}
+
+      {/* 360° 비디오 생성 확인 모달 */}
+      {showVideoModal && (
+        <div 
+          className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setShowVideoModal(false)}
+        >
+          <div 
+            className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-fade-in-up"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <RotateCw size={32} className="text-white" />
+              </div>
+              <h3 className="text-xl font-black text-zinc-900">360° 비디오 생성</h3>
+              <p className="text-zinc-500 text-sm mt-2">
+                생성된 4장의 이미지로 360° 회전 비디오를 만듭니다
+              </p>
+            </div>
+
+            <div className="bg-zinc-50 rounded-2xl p-4 mb-6 space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">영상 길이</span>
+                <span className="font-bold">8초</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">해상도</span>
+                <span className="font-bold">HD (16:9)</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">예상 소요 시간</span>
+                <span className="font-bold">2-5분</span>
+              </div>
+              <div className="border-t border-zinc-200 pt-3 flex justify-between text-sm">
+                <span className="text-zinc-500">필요 크레딧</span>
+                <span className="font-black text-purple-600">{VIDEO_CREDITS}크레딧</span>
+              </div>
+            </div>
+
+            {(balance?.credits || 0) < VIDEO_CREDITS && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+                <p className="text-red-600 text-sm font-bold">
+                  크레딧이 부족합니다 (보유: {balance?.credits || 0})
+                </p>
+                <a href="/#pricing" className="text-red-600 text-xs underline mt-1 inline-block">
+                  크레딧 충전하기 →
+                </a>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowVideoModal(false)}
+                className="flex-1 py-3 bg-zinc-100 text-zinc-600 rounded-xl font-bold text-sm hover:bg-zinc-200 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleVideoGenerate}
+                disabled={(balance?.credits || 0) < VIDEO_CREDITS}
+                className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-black text-sm hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <Video size={16} /> 생성하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 샘플 비디오 모달 */}
+      {showSampleModal && (
+        <div 
+          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setShowSampleModal(false)}
+        >
+          <div 
+            className="bg-white rounded-3xl p-6 max-w-2xl w-full shadow-2xl animate-fade-in-up"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-black text-zinc-900">360° 비디오 샘플</h3>
+              <button 
+                onClick={() => setShowSampleModal(false)}
+                className="text-zinc-400 hover:text-zinc-600 transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="bg-zinc-900 rounded-2xl overflow-hidden mb-4">
+              <div className="aspect-video flex items-center justify-center">
+                <p className="text-zinc-500 text-sm">
+                  샘플 비디오 준비 중입니다
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-4 gap-2 mb-4">
+              {['Front View', 'Side View', 'Detail', 'Full Shot'].map((title, idx) => (
+                <div key={idx} className="bg-zinc-100 rounded-lg p-2 text-center">
+                  <div className="aspect-square bg-zinc-200 rounded-lg mb-1"></div>
+                  <span className="text-[9px] font-bold text-zinc-500 uppercase">{title}</span>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-zinc-500 text-xs text-center">
+              위 4장의 이미지로 360° 회전 비디오가 생성됩니다
+            </p>
+          </div>
         </div>
       )}
     </div>
