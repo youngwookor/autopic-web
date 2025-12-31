@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import Navbar from '@/components/Navbar';
+import Footer from '@/components/landing/Footer';
 import { 
   ArrowRight, 
   Play, 
@@ -14,7 +16,7 @@ import {
   Check
 } from 'lucide-react';
 
-// 카테고리 데이터 (이모지 제거, 영문명 추가)
+// 카테고리 데이터
 const categories = [
   { id: 'bag', name: '가방', nameEn: 'BAG', folder: '가방' },
   { id: 'shoes', name: '신발', nameEn: 'SHOES', folder: '신발' },
@@ -171,7 +173,7 @@ function CategoryShowcase({
       <div className="grid lg:grid-cols-12 gap-8">
         {/* 좌측: 비포/애프터 슬라이더 */}
         <div className="lg:col-span-5">
-          <div className="sticky top-32">
+          <div className="sticky top-40">
             <BeforeAfterSlider
               beforeImage={`/gallery/${category.folder}/0.jpg`}
               afterImage={`/gallery/${category.folder}/${selectedImage}.png`}
@@ -297,6 +299,13 @@ export default function GalleryPage() {
   const [selectedImages, setSelectedImages] = useState<Record<number, number>>(
     Object.fromEntries(categories.map((_, i) => [i, 1]))
   );
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => setIsScrolled(window.scrollY > 50);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const handleImageSelect = (categoryIndex: number, imageIndex: number) => {
     setSelectedImages(prev => ({ ...prev, [categoryIndex]: imageIndex }));
@@ -304,29 +313,8 @@ export default function GalleryPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* 네비게이션 */}
-      <nav className="fixed top-0 left-0 right-0 z-40 bg-white/80 backdrop-blur-xl border-b border-zinc-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <Link href="/" className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-[#87D039] to-[#6BBF2A] rounded-lg flex items-center justify-center">
-                <div className="w-4 h-4 border-2 border-white rounded-full" />
-              </div>
-              <span className="font-bold text-xl">AUTOPIC</span>
-            </Link>
-            
-            <div className="flex items-center gap-4">
-              <Link href="/pricing" className="text-sm text-zinc-500 hover:text-zinc-900 hidden sm:block">
-                요금제
-              </Link>
-              <Link href="/register" className="px-4 py-2 bg-zinc-900 text-white text-sm font-medium rounded-full flex items-center gap-2">
-                무료 체험
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
+      {/* 메인 Navbar 사용 */}
+      <Navbar isScrolled={isScrolled} />
 
       {/* 히어로 */}
       <section className="pt-28 pb-8 px-4 sm:px-6 lg:px-8">
@@ -344,7 +332,7 @@ export default function GalleryPage() {
       </section>
 
       {/* 카테고리 탭 */}
-      <section className="sticky top-16 z-30 bg-white border-y border-zinc-100">
+      <section className="sticky top-[72px] z-30 bg-white border-y border-zinc-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
             {categories.map((cat, index) => (
@@ -405,22 +393,8 @@ export default function GalleryPage() {
         </div>
       </section>
 
-      {/* 푸터 */}
-      <footer className="py-8 px-4 border-t border-zinc-100">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-gradient-to-br from-[#87D039] to-[#6BBF2A] rounded-md flex items-center justify-center">
-              <div className="w-3 h-3 border-2 border-white rounded-full" />
-            </div>
-            <span className="font-semibold">AUTOPIC</span>
-          </div>
-          <div className="flex items-center gap-6 text-sm text-zinc-400">
-            <Link href="/terms" className="hover:text-zinc-600">이용약관</Link>
-            <Link href="/privacy" className="hover:text-zinc-600">개인정보처리방침</Link>
-            <span>© 2025</span>
-          </div>
-        </div>
-      </footer>
+      {/* 메인 Footer 사용 */}
+      <Footer />
     </div>
   );
 }

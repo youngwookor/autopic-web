@@ -174,6 +174,12 @@ export default function Navbar({ isScrolled: propIsScrolled }: NavbarProps) {
                 >
                   이용방법
                 </button>
+                <Link
+                  href="/gallery"
+                  className="text-sm font-medium text-zinc-600 hover:text-black transition-colors"
+                >
+                  갤러리
+                </Link>
                 <button 
                   onClick={() => scrollToSection('pricing')} 
                   className="text-sm font-medium text-zinc-600 hover:text-black transition-colors"
@@ -228,12 +234,12 @@ export default function Navbar({ isScrolled: propIsScrolled }: NavbarProps) {
                 >
                   이용방법
                 </button>
-                <button 
-                  onClick={() => scrollToSection('showcase')} 
+                <Link
+                  href="/gallery"
                   className="text-sm font-medium text-zinc-600 hover:text-black transition-colors"
                 >
                   갤러리
-                </button>
+                </Link>
                 <button 
                   onClick={() => scrollToSection('pricing')} 
                   className="text-sm font-medium text-zinc-600 hover:text-black transition-colors"
@@ -331,6 +337,14 @@ export default function Navbar({ isScrolled: propIsScrolled }: NavbarProps) {
                   <HelpCircle size={20} className="text-zinc-500" />
                   <span className="font-medium">이용방법</span>
                 </button>
+                <Link 
+                  href="/gallery"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="flex items-center gap-4 w-full px-4 py-3.5 rounded-xl hover:bg-zinc-50 transition"
+                >
+                  <ImageIcon size={20} className="text-zinc-500" />
+                  <span className="font-medium">갤러리</span>
+                </Link>
                 <button 
                   onClick={() => scrollToSection('pricing')}
                   className="flex items-center gap-4 w-full px-4 py-3.5 rounded-xl hover:bg-zinc-50 transition"
@@ -385,13 +399,14 @@ export default function Navbar({ isScrolled: propIsScrolled }: NavbarProps) {
                   <HelpCircle size={20} className="text-zinc-500" />
                   <span className="font-medium">이용방법</span>
                 </button>
-                <button 
-                  onClick={() => scrollToSection('showcase')}
+                <Link 
+                  href="/gallery"
+                  onClick={() => setIsMenuOpen(false)}
                   className="flex items-center gap-4 w-full px-4 py-3.5 rounded-xl hover:bg-zinc-50 transition"
                 >
                   <ImageIcon size={20} className="text-zinc-500" />
                   <span className="font-medium">갤러리</span>
-                </button>
+                </Link>
                 <button 
                   onClick={() => scrollToSection('pricing')}
                   className="flex items-center gap-4 w-full px-4 py-3.5 rounded-xl hover:bg-zinc-50 transition"
