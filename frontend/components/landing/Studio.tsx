@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useAnalytics } from '@/hooks/useAnalytics';
@@ -121,6 +122,9 @@ export default function Studio() {
   // 생성된 비디오 뷰어 모달
   const [showVideoViewer, setShowVideoViewer] = useState(false);
 
+  // Portal용 mounted 상태 (SSR 대응)
+  const [mounted, setMounted] = useState(false);
+
   const mainInputRef = useRef<HTMLInputElement>(null);
   const subInputRef = useRef<HTMLInputElement>(null);
   const generateButtonRef = useRef<HTMLDivElement>(null);
@@ -135,6 +139,11 @@ export default function Studio() {
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Portal용 mounted 설정
+  useEffect(() => {
+    setMounted(true);
   }, []);
 
   // Pull to Refresh 핸들러
@@ -1357,10 +1366,10 @@ export default function Studio() {
         </div>
       )}
 
-      {/* 360° 비디오 생성 확인 모달 */}
-      {showVideoModal && (
+      {/* 360° 비디오 생성 확인 모달 - Portal로 body에 렌더링 */}
+      {mounted && showVideoModal && createPortal(
         <div 
-          className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center"
+          className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center"
           onClick={() => setShowVideoModal(false)}
         >
           <div 
@@ -1427,13 +1436,14 @@ export default function Studio() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* 생성된 비디오 뷰어 모달 */}
-      {showVideoViewer && videoId && (
+      {/* 생성된 비디오 뷰어 모달 - Portal로 body에 렌더링 */}
+      {mounted && showVideoViewer && videoId && createPortal(
         <div 
-          className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-sm flex items-end md:items-center justify-center"
+          className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-sm flex items-end md:items-center justify-center"
           onClick={() => setShowVideoViewer(false)}
         >
           <div 
@@ -1547,13 +1557,14 @@ export default function Studio() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* 샘플 비디오 보기 모달 */}
-      {showSampleModal && (
+      {/* 샘플 비디오 보기 모달 - Portal로 body에 렌더링 */}
+      {mounted && showSampleModal && createPortal(
         <div 
-          className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-end md:items-center justify-center"
+          className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-end md:items-center justify-center"
           onClick={() => setShowSampleModal(false)}
         >
           <div 
@@ -1622,7 +1633,8 @@ export default function Studio() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
