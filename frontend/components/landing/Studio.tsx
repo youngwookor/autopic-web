@@ -24,6 +24,11 @@ import {
   RefreshCw,
   ZoomIn,
   ZoomOut,
+  Video,
+  RotateCw,
+  Play,
+  CheckCircle,
+  AlertCircle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -98,6 +103,17 @@ export default function Studio() {
 
   // 공유 메뉴
   const [showShareMenu, setShowShareMenu] = useState(false);
+
+  // 360° 비디오 관련 상태
+  const VIDEO_CREDITS = 30;
+  const [showVideoModal, setShowVideoModal] = useState(false);
+  const [videoGenerating, setVideoGenerating] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [videoId, setVideoId] = useState<string | null>(null);
+  const [videoStatus, setVideoStatus] = useState<'idle' | 'pending' | 'processing' | 'completed' | 'failed'>('idle');
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   const mainInputRef = useRef<HTMLInputElement>(null);
   const subInputRef = useRef<HTMLInputElement>(null);
@@ -500,6 +516,129 @@ export default function Studio() {
     
     setShowShareMenu(false);
   };
+
+  // 360° 비디오 생성 시작
+  const handleVideoGenerate = async () => {
+    if (!user?.id) {
+      toast.error('로그인이 필요합니다');
+      return;
+    }
+
+    if (credits < VIDEO_CREDITS) {
+      toast.error(`크레딧이 부족합니다. ${VIDEO_CREDITS}크레딧이 필요합니다.`);
+      return;
+    }
+
+    if (generatedImages.length < 4) {
+      toast.error('이미지 4장이 필요합니다');
+      return;
+    }
+
+    setVideoGenerating(true);
+    setVideoProgress(0);
+    setVideoStatus('pending');
+    setVideoError(null);
+    setShowVideoModal(false);
+
+    try {
+      // base64 데이터만 추출 (data:image/jpeg;base64, 제거)
+      const imageData = generatedImages.map(img => img.split(',')[1]);
+      
+      const response = await fetch(`${API_URL}/api/video/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          images: imageData,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setVideoId(data.video_id);
+        toast.success('비디오 생성이 시작되었습니다!');
+        
+        // 크레딧 갱신
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('credits')
+          .eq('id', user.id)
+          .single();
+        if (profile) setBalance(profile.credits || 0);
+        
+        // 폴링 시작
+        startVideoPolling(data.video_id);
+      } else {
+        setVideoStatus('failed');
+        setVideoError(data.error || '비디오 생성 시작 실패');
+        toast.error(data.error || '비디오 생성 시작 실패');
+        setVideoGenerating(false);
+      }
+    } catch (err: any) {
+      setVideoStatus('failed');
+      setVideoError(err.message || '비디오 생성 중 오류 발생');
+      toast.error('비디오 생성 중 오류가 발생했습니다');
+      setVideoGenerating(false);
+    }
+  };
+
+  // 비디오 상태 폴링
+  const startVideoPolling = (vidId: string) => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+    }
+
+    pollingRef.current = setInterval(async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/video/status/${vidId}`);
+        const data = await response.json();
+        
+        if (data.success) {
+          const { status, progress, video_url, error_message } = data;
+          
+          setVideoStatus(status);
+          setVideoProgress(progress || 0);
+          
+          if (status === 'completed') {
+            setVideoUrl(video_url);
+            setVideoGenerating(false);
+            playNotificationSound();
+            toast.success('360° 비디오 생성 완료!');
+            if (pollingRef.current) {
+              clearInterval(pollingRef.current);
+            }
+          } else if (status === 'failed') {
+            setVideoError(error_message || '비디오 생성 실패');
+            setVideoGenerating(false);
+            toast.error('비디오 생성에 실패했습니다');
+            if (pollingRef.current) {
+              clearInterval(pollingRef.current);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('폴링 오류:', err);
+      }
+    }, 5000); // 5초마다 체크
+  };
+
+  // 비디오 다운로드
+  const handleVideoDownload = () => {
+    if (videoId) {
+      window.open(`${API_URL}/api/video/download/${videoId}`, '_blank');
+      toast.success('비디오 다운로드 시작!');
+    }
+  };
+
+  // 폴링 정리
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
+  }, []);
 
   const goToPrevImage = () => {
     setSelectedImageIndex((prev) => (prev === 0 ? generatedImages.length - 1 : prev - 1));
@@ -965,6 +1104,85 @@ export default function Studio() {
                           </div>
                         ))}
                       </div>
+
+                      {/* 360° 비디오 섹션 */}
+                      <div className="mt-4 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl md:rounded-2xl p-4 text-white">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                              <RotateCw size={20} className="md:w-6 md:h-6" />
+                            </div>
+                            <div>
+                              <h4 className="text-sm md:text-base font-bold">360° 회전 비디오</h4>
+                              <p className="text-white/80 text-[10px] md:text-xs">
+                                생성된 이미지로 360° 회전 비디오를 만들어보세요
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            {/* 비디오 생성 상태에 따른 버튼 */}
+                            {videoStatus === 'idle' && (
+                              <button
+                                onClick={() => setShowVideoModal(true)}
+                                disabled={credits < VIDEO_CREDITS}
+                                className="px-3 md:px-4 py-2 bg-white text-purple-600 rounded-lg md:rounded-xl text-[10px] md:text-xs font-bold hover:bg-white/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                              >
+                                <Video size={12} className="md:w-3.5 md:h-3.5" /> 비디오 만들기
+                              </button>
+                            )}
+                            
+                            {(videoStatus === 'pending' || videoStatus === 'processing') && (
+                              <div className="flex items-center gap-2">
+                                <Loader2 size={14} className="animate-spin" />
+                                <span className="text-xs font-bold">생성 중... {videoProgress}%</span>
+                              </div>
+                            )}
+                            
+                            {videoStatus === 'completed' && (
+                              <button
+                                onClick={handleVideoDownload}
+                                className="px-3 md:px-4 py-2 bg-white text-green-600 rounded-lg md:rounded-xl text-[10px] md:text-xs font-bold hover:bg-white/90 transition-colors flex items-center gap-1.5"
+                              >
+                                <CheckCircle size={12} className="md:w-3.5 md:h-3.5" /> 다운로드
+                              </button>
+                            )}
+                            
+                            {videoStatus === 'failed' && (
+                              <button
+                                onClick={() => {
+                                  setVideoStatus('idle');
+                                  setVideoError(null);
+                                }}
+                                className="px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-[10px] md:text-xs font-bold transition-colors"
+                              >
+                                다시 시도
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* 진행 상태 */}
+                        {(videoStatus === 'pending' || videoStatus === 'processing') && (
+                          <div className="mt-3">
+                            <div className="w-full h-1.5 bg-white/20 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-white transition-all duration-300" 
+                                style={{width: `${videoProgress}%`}}
+                              />
+                            </div>
+                            <p className="text-white/70 text-[10px] mt-1.5 text-center">
+                              약 2-5분 소요됩니다. 페이지를 닫지 마세요.
+                            </p>
+                          </div>
+                        )}
+                        
+                        {videoError && (
+                          <p className="mt-2 text-red-200 text-[10px] flex items-center gap-1">
+                            <AlertCircle size={12} /> {videoError}
+                          </p>
+                        )}
+                      </div>
                     </>
                   ) : (
                     <div className="flex-1 flex items-center justify-center">
@@ -1044,6 +1262,75 @@ export default function Studio() {
           >
             <ChevronRight size={32} />
           </button>
+        </div>
+      )}
+
+      {/* 360° 비디오 생성 확인 모달 */}
+      {showVideoModal && (
+        <div 
+          className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowVideoModal(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl md:rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="text-center mb-6">
+              <div className="w-14 h-14 md:w-16 md:h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <RotateCw size={28} className="text-white md:w-8 md:h-8" />
+              </div>
+              <h3 className="text-lg md:text-xl font-bold text-zinc-900">360° 비디오 생성</h3>
+              <p className="text-zinc-500 text-xs md:text-sm mt-2">
+                생성된 4장의 이미지로 360° 회전 비디오를 만듭니다
+              </p>
+            </div>
+
+            <div className="bg-zinc-50 rounded-xl md:rounded-2xl p-4 mb-6 space-y-2.5">
+              <div className="flex justify-between text-xs md:text-sm">
+                <span className="text-zinc-500">영상 길이</span>
+                <span className="font-bold">8초</span>
+              </div>
+              <div className="flex justify-between text-xs md:text-sm">
+                <span className="text-zinc-500">해상도</span>
+                <span className="font-bold">HD (16:9)</span>
+              </div>
+              <div className="flex justify-between text-xs md:text-sm">
+                <span className="text-zinc-500">예상 소요 시간</span>
+                <span className="font-bold">2-5분</span>
+              </div>
+              <div className="border-t border-zinc-200 pt-2.5 flex justify-between text-xs md:text-sm">
+                <span className="text-zinc-500">필요 크레딧</span>
+                <span className="font-bold text-purple-600">{VIDEO_CREDITS}크레딧</span>
+              </div>
+            </div>
+
+            {credits < VIDEO_CREDITS && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 md:p-4 mb-6">
+                <p className="text-red-600 text-xs md:text-sm font-bold">
+                  크레딧이 부족합니다 (보유: {credits})
+                </p>
+                <Link href="/#pricing" className="text-red-600 text-[10px] md:text-xs underline mt-1 inline-block">
+                  크레딧 충전하기 →
+                </Link>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowVideoModal(false)}
+                className="flex-1 py-2.5 md:py-3 bg-zinc-100 text-zinc-600 rounded-xl font-bold text-xs md:text-sm hover:bg-zinc-200 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleVideoGenerate}
+                disabled={credits < VIDEO_CREDITS}
+                className="flex-1 py-2.5 md:py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-bold text-xs md:text-sm hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <Video size={14} className="md:w-4 md:h-4" /> 생성하기
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>
