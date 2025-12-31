@@ -2748,7 +2748,7 @@ async def subscribe_with_billing(request: BillingSuccessRequest):
             "plan_name": plan_info["name"],
             "credits_granted": total_credits,
             "amount_paid": amount,
-            "next_billing_date": period_end,
+            "next_billing_date": billing_period_end,
             "card_number": billing_data.get("card", {}).get("number"),
         }
         
