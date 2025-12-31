@@ -1386,15 +1386,15 @@ export default function Studio() {
       {/* 샘플 비디오 보기 모달 */}
       {showSampleModal && (
         <div 
-          className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-end md:items-center justify-center"
           onClick={() => setShowSampleModal(false)}
         >
           <div 
-            className="bg-zinc-900 rounded-2xl md:rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden"
+            className="bg-zinc-900 rounded-t-2xl md:rounded-2xl md:rounded-3xl w-full md:max-w-2xl md:mx-4 shadow-2xl overflow-hidden max-h-[90vh] md:max-h-[85vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
             {/* 비디오 플레이어 */}
-            <div className="relative aspect-video bg-black">
+            <div className="relative aspect-video bg-black flex-shrink-0">
               <video
                 src="/samples/sample-360.mp4"
                 autoPlay
@@ -1418,8 +1418,8 @@ export default function Studio() {
             </div>
             
             {/* 정보 섹션 */}
-            <div className="p-4 md:p-6">
-              <h3 className="text-lg md:text-xl font-bold text-white mb-2">AI 360° 회전 비디오</h3>
+            <div className="p-4 md:p-6 overflow-y-auto">
+              <h3 className="text-base md:text-xl font-bold text-white mb-2">AI 360° 회전 비디오</h3>
               <p className="text-zinc-400 text-xs md:text-sm mb-4">
                 4장의 상품 이미지를 AI가 분석하여 부드러운 360° 회전 영상을 생성합니다.
                 스마트스토어, 쿠팡 등 이커머스 디테일 페이지에 활용하세요.
