@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -16,9 +16,16 @@ function BillingSuccessContent() {
   const [isProcessing, setIsProcessing] = useState(true);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const processedRef = useRef(false); // 중복 요청 방지
 
   useEffect(() => {
     const processSubscription = async () => {
+      // 이미 처리되었으면 스킵
+      if (processedRef.current) {
+        return;
+      }
+      processedRef.current = true;
+
       if (!isAuthenticated || !user) {
         setError('로그인이 필요합니다');
         setIsProcessing(false);
@@ -61,6 +68,13 @@ function BillingSuccessContent() {
           
           toast.success('구독이 시작되었습니다!');
         } else {
+          // 이미 구독 중인 경우 성공 처리
+          if (data.error?.includes('이미 활성화된 구독') || data.error?.includes('기존 요청을 처리')) {
+            // 마이페이지로 리다이렉트
+            toast.success('구독이 이미 활성화되어 있습니다');
+            router.push('/mypage');
+            return;
+          }
           setError(data.error || '구독 처리 중 오류가 발생했습니다');
         }
       } catch (err) {
@@ -72,7 +86,7 @@ function BillingSuccessContent() {
     };
 
     processSubscription();
-  }, [searchParams, user, isAuthenticated, setBalance]);
+  }, [searchParams, user, isAuthenticated, setBalance, router]);
 
   if (isProcessing) {
     return (

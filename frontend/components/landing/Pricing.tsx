@@ -48,6 +48,8 @@ export default function Pricing() {
   const [touchEnd, setTouchEnd] = useState(0);
   const [webDetailOpen, setWebDetailOpen] = useState(false);
   const [desktopDetailOpen, setDesktopDetailOpen] = useState(false);
+  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
+  const [pendingPlan, setPendingPlan] = useState<string | null>(null);
 
   const formatPrice = (price: number) => new Intl.NumberFormat('ko-KR').format(price);
   
@@ -132,8 +134,17 @@ export default function Pricing() {
       return;
     }
 
+    // 구독 확인 모달 표시
+    setPendingPlan(plan);
+    setShowSubscribeModal(true);
+  };
+
+  const confirmSubscribe = async () => {
+    if (!pendingPlan || !user) return;
+    
+    setShowSubscribeModal(false);
     setIsLoading(true);
-    setSelectedPlan(plan);
+    setSelectedPlan(pendingPlan);
 
     try {
       // 토스페이먼츠 설정 가져오기
@@ -149,7 +160,7 @@ export default function Pricing() {
 
       await payment.requestBillingAuth({
         method: 'CARD',
-        successUrl: `${window.location.origin}/pricing/billing-success?plan=${plan}&isAnnual=${isAnnual}`,
+        successUrl: `${window.location.origin}/pricing/billing-success?plan=${pendingPlan}&isAnnual=${isAnnual}`,
         failUrl: `${window.location.origin}/pricing/billing-fail`,
       });
 
@@ -161,6 +172,7 @@ export default function Pricing() {
     } finally {
       setIsLoading(false);
       setSelectedPlan(null);
+      setPendingPlan(null);
     }
   };
 
@@ -507,6 +519,106 @@ export default function Pricing() {
           <button onClick={() => toast('문의 기능은 준비 중입니다', { icon: '📧' })} className="w-full md:w-auto whitespace-nowrap px-5 py-2.5 bg-zinc-900 text-white rounded-lg font-bold text-sm hover:bg-black transition-colors">문의하기</button>
         </div>
       </div>
+
+      {/* 구독 확인 모달 */}
+      {showSubscribeModal && pendingPlan && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSubscribeModal(false)}>
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 md:p-8" onClick={e => e.stopPropagation()}>
+            <h3 className="text-xl font-bold text-center mb-2">구독 결제 확인</h3>
+            <p className="text-zinc-500 text-center text-sm mb-6">아래 내용을 확인하시고 결제를 진행해주세요</p>
+            
+            {(() => {
+              const plan = SUBSCRIPTION_PLANS.find(p => p.id === pendingPlan);
+              if (!plan) return null;
+              const monthlyPrice = plan.price;
+              const annualPrice = plan.annualPrice || plan.price;
+              const annualTotal = annualPrice * 12;
+              const monthlyTotal = monthlyPrice * 12;
+              const savings = monthlyTotal - annualTotal;
+              
+              return (
+                <div className="space-y-4">
+                  {/* 결제 주기 선택 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => setIsAnnual(false)}
+                      className={`p-4 rounded-xl border-2 text-left transition-all ${
+                        !isAnnual 
+                          ? 'border-blue-500 bg-blue-50' 
+                          : 'border-zinc-200 hover:border-zinc-300'
+                      }`}
+                    >
+                      <div className="text-xs text-zinc-500 mb-1">월간 결제</div>
+                      <div className="text-lg font-bold">₩{formatPrice(monthlyPrice)}<span className="text-sm font-normal text-zinc-400">/월</span></div>
+                      <div className="text-xs text-zinc-400 mt-1">매월 자동 결제</div>
+                    </button>
+                    <button
+                      onClick={() => setIsAnnual(true)}
+                      className={`p-4 rounded-xl border-2 text-left transition-all relative ${
+                        isAnnual 
+                          ? 'border-blue-500 bg-blue-50' 
+                          : 'border-zinc-200 hover:border-zinc-300'
+                      }`}
+                    >
+                      <div className="absolute -top-2 -right-2 bg-[#87D039] text-black text-[10px] font-bold px-2 py-0.5 rounded-full">20% 할인</div>
+                      <div className="text-xs text-zinc-500 mb-1">연간 결제</div>
+                      <div className="text-lg font-bold">₩{formatPrice(annualPrice)}<span className="text-sm font-normal text-zinc-400">/월</span></div>
+                      <div className="text-xs text-[#87D039] mt-1">₩{formatPrice(savings)} 절약</div>
+                    </button>
+                  </div>
+
+                  {/* 결제 요약 */}
+                  <div className="bg-zinc-50 rounded-xl p-4 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-zinc-500">플랜</span>
+                      <span className="font-bold">{plan.name}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-zinc-500">결제 주기</span>
+                      <span className="font-bold">{isAnnual ? '연간 (12개월)' : '월간'}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-zinc-500">지급 크레딧</span>
+                      <span className="font-bold text-[#87D039]">{isAnnual ? '1,200' : '100'} 크레딧</span>
+                    </div>
+                    <div className="border-t pt-2 mt-2">
+                      <div className="flex justify-between">
+                        <span className="text-zinc-500">결제 금액</span>
+                        <span className="text-xl font-bold">₩{formatPrice(isAnnual ? annualTotal : monthlyPrice)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 안내 문구 */}
+                  <p className="text-xs text-zinc-400 text-center">
+                    {isAnnual 
+                      ? '연간 결제는 1년치 크레딧이 즉시 지급되며, 1년 후 자동 갱신됩니다.'
+                      : '월간 결제는 매월 자동 갱신되며, 언제든 취소 가능합니다.'
+                    }
+                  </p>
+
+                  {/* 버튼 */}
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowSubscribeModal(false)}
+                      className="flex-1 py-3 rounded-xl font-bold text-sm bg-zinc-100 text-zinc-700 hover:bg-zinc-200 transition-all"
+                    >
+                      취소
+                    </button>
+                    <button
+                      onClick={confirmSubscribe}
+                      disabled={isLoading}
+                      className="flex-1 py-3 rounded-xl font-bold text-sm bg-blue-600 text-white hover:bg-blue-700 transition-all disabled:opacity-50"
+                    >
+                      {isLoading ? '처리 중...' : '결제하기'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
