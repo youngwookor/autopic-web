@@ -1369,71 +1369,78 @@ export default function Studio() {
       {/* 360° 비디오 생성 확인 모달 - Portal로 body에 렌더링 */}
       {mounted && showVideoModal && createPortal(
         <div 
-          className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center"
+          className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4"
           onClick={() => setShowVideoModal(false)}
         >
           <div 
-            className="bg-white rounded-t-2xl md:rounded-2xl p-6 md:p-8 w-full md:max-w-md shadow-2xl max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-t-2xl md:rounded-2xl w-full md:max-w-md shadow-2xl max-h-[75vh] md:max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
             {/* 모바일 드래그 핸들 */}
-            <div className="md:hidden w-full pb-4 flex justify-center -mt-2">
+            <div className="md:hidden w-full py-3 flex justify-center flex-shrink-0">
               <div className="w-10 h-1 bg-zinc-300 rounded-full" />
             </div>
-            <div className="text-center mb-6">
-              <div className="w-14 h-14 md:w-16 md:h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <RotateCw size={28} className="text-white md:w-8 md:h-8" />
-              </div>
-              <h3 className="text-lg md:text-xl font-bold text-zinc-900">360° 비디오 생성</h3>
-              <p className="text-zinc-500 text-xs md:text-sm mt-2">
-                생성된 4장의 이미지로 360° 회전 비디오를 만듭니다
-              </p>
-            </div>
-
-            <div className="bg-zinc-50 rounded-xl md:rounded-2xl p-4 mb-6 space-y-2.5">
-              <div className="flex justify-between text-xs md:text-sm">
-                <span className="text-zinc-500">영상 길이</span>
-                <span className="font-bold">8초</span>
-              </div>
-              <div className="flex justify-between text-xs md:text-sm">
-                <span className="text-zinc-500">해상도</span>
-                <span className="font-bold">HD (16:9)</span>
-              </div>
-              <div className="flex justify-between text-xs md:text-sm">
-                <span className="text-zinc-500">예상 소요 시간</span>
-                <span className="font-bold">2-5분</span>
-              </div>
-              <div className="border-t border-zinc-200 pt-2.5 flex justify-between text-xs md:text-sm">
-                <span className="text-zinc-500">필요 크레딧</span>
-                <span className="font-bold text-purple-600">{VIDEO_CREDITS}크레딧</span>
-              </div>
-            </div>
-
-            {credits < VIDEO_CREDITS && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-3 md:p-4 mb-6">
-                <p className="text-red-600 text-xs md:text-sm font-bold">
-                  크레딧이 부족합니다 (보유: {credits})
+            
+            {/* 스크롤 가능한 컨텐츠 영역 */}
+            <div className="flex-1 overflow-y-auto px-5 md:px-8 pt-2 md:pt-8">
+              <div className="text-center mb-4 md:mb-6">
+                <div className="w-12 h-12 md:w-16 md:h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-3 md:mb-4">
+                  <RotateCw size={24} className="text-white md:w-8 md:h-8" />
+                </div>
+                <h3 className="text-base md:text-xl font-bold text-zinc-900">360° 비디오 생성</h3>
+                <p className="text-zinc-500 text-xs md:text-sm mt-1.5 md:mt-2">
+                  생성된 4장의 이미지로 360° 회전 비디오를 만듭니다
                 </p>
-                <Link href="/#pricing" className="text-red-600 text-[10px] md:text-xs underline mt-1 inline-block">
-                  크레딧 충전하기 →
-                </Link>
               </div>
-            )}
 
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowVideoModal(false)}
-                className="flex-1 py-2.5 md:py-3 bg-zinc-100 text-zinc-600 rounded-xl font-bold text-xs md:text-sm hover:bg-zinc-200 transition-colors"
-              >
-                취소
-              </button>
-              <button
-                onClick={handleVideoGenerate}
-                disabled={credits < VIDEO_CREDITS}
-                className="flex-1 py-2.5 md:py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-bold text-xs md:text-sm hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                <Video size={14} className="md:w-4 md:h-4" /> 생성하기
-              </button>
+              <div className="bg-zinc-50 rounded-xl md:rounded-2xl p-3 md:p-4 mb-4 md:mb-6 space-y-2">
+                <div className="flex justify-between text-xs md:text-sm">
+                  <span className="text-zinc-500">영상 길이</span>
+                  <span className="font-bold">8초</span>
+                </div>
+                <div className="flex justify-between text-xs md:text-sm">
+                  <span className="text-zinc-500">해상도</span>
+                  <span className="font-bold">HD (16:9)</span>
+                </div>
+                <div className="flex justify-between text-xs md:text-sm">
+                  <span className="text-zinc-500">예상 소요 시간</span>
+                  <span className="font-bold">2-5분</span>
+                </div>
+                <div className="border-t border-zinc-200 pt-2 flex justify-between text-xs md:text-sm">
+                  <span className="text-zinc-500">필요 크레딧</span>
+                  <span className="font-bold text-purple-600">{VIDEO_CREDITS}크레딧</span>
+                </div>
+              </div>
+
+              {credits < VIDEO_CREDITS && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
+                  <p className="text-red-600 text-xs md:text-sm font-bold">
+                    크레딧이 부족합니다 (보유: {credits})
+                  </p>
+                  <Link href="/#pricing" className="text-red-600 text-[10px] md:text-xs underline mt-1 inline-block">
+                    크레딧 충전하기 →
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            {/* 하단 버튼 영역 - 항상 고정 */}
+            <div className="flex-shrink-0 px-5 md:px-8 pb-5 md:pb-8 pt-3 border-t border-zinc-100">
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowVideoModal(false)}
+                  className="flex-1 py-2.5 md:py-3 bg-zinc-100 text-zinc-600 rounded-xl font-bold text-xs md:text-sm hover:bg-zinc-200 transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleVideoGenerate}
+                  disabled={credits < VIDEO_CREDITS}
+                  className="flex-1 py-2.5 md:py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-bold text-xs md:text-sm hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <Video size={14} className="md:w-4 md:h-4" /> 생성하기
+                </button>
+              </div>
             </div>
           </div>
         </div>,
