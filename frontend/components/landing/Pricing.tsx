@@ -28,7 +28,7 @@ function loadTossPayments(clientKey: string): Promise<any> {
       return;
     }
     const script = document.createElement('script');
-    script.src = 'https://js.tosspayments.com/v1/payment';
+    script.src = 'https://js.tosspayments.com/v2/standard';
     script.onload = () => resolve((window as any).TossPayments(clientKey));
     script.onerror = () => reject(new Error('토스페이먼츠 로드 실패'));
     document.head.appendChild(script);
@@ -113,20 +113,54 @@ export default function Pricing() {
     }
   };
 
-  const handleSubscribe = (plan: string) => {
+  const handleSubscribe = async (plan: string) => {
     if (plan === 'free') {
       if (!isAuthenticated) {
-        // 비로그인: 회원가입 페이지로 이동
         toast.success('회원가입하고 무료 5크레딧을 받으세요!');
         router.push('/register');
         return;
       }
-      // 로그인 상태: 스튜디오로 이동
       toast.success('스튜디오에서 이미지를 생성해보세요!');
       document.getElementById('studio')?.scrollIntoView({ behavior: 'smooth' });
       return;
     }
-    toast('구독 결제 기능은 준비 중입니다', { icon: '🚧' });
+
+    // 로그인 체크
+    if (!isAuthenticated || !user) {
+      toast.error('로그인이 필요합니다');
+      router.push('/login');
+      return;
+    }
+
+    setIsLoading(true);
+    setSelectedPlan(plan);
+
+    try {
+      // 토스페이먼츠 설정 가져오기
+      const configResponse = await fetch(`${API_URL}/api/billing/config`);
+      const config = await configResponse.json();
+
+      // 토스페이먼츠 SDK 로드 (v2)
+      const tossPayments = await loadTossPayments(config.client_key);
+      const customerKey = user.id;
+
+      // 빌링 위젯 실행
+      const payment = tossPayments.payment({ customerKey });
+
+      await payment.requestBillingAuth('CARD', {
+        successUrl: `${window.location.origin}/pricing/billing-success?plan=${plan}&isAnnual=${isAnnual}`,
+        failUrl: `${window.location.origin}/pricing/billing-fail`,
+      });
+
+    } catch (error: any) {
+      console.error('구독 결제 오류:', error);
+      if (error.code !== 'USER_CANCEL') {
+        toast.error(error.message || '결제 중 오류가 발생했습니다');
+      }
+    } finally {
+      setIsLoading(false);
+      setSelectedPlan(null);
+    }
   };
 
   return (

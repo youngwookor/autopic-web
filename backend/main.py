@@ -2471,6 +2471,301 @@ async def create_subscription(request: SubscriptionCreateRequest):
         return SubscriptionResponse(success=False, error=str(e))
 
 
+# ============================================================================
+# 토스페이먼츠 빌링키 결제 API (구독용)
+# ============================================================================
+
+class BillingKeyIssueRequest(BaseModel):
+    user_id: str
+    auth_key: str  # 토스 위젯에서 받은 인증키
+    customer_key: str  # 고객 고유 키 (user_id 사용)
+
+
+class BillingPaymentRequest(BaseModel):
+    user_id: str
+    plan: str
+    billing_key: str
+    customer_key: str
+    is_annual: bool = False
+
+
+class BillingSuccessRequest(BaseModel):
+    user_id: str
+    plan: str
+    auth_key: str
+    customer_key: str
+    is_annual: bool = False
+
+
+@app.post("/api/billing/issue")
+async def issue_billing_key(request: BillingKeyIssueRequest):
+    """토스페이먼츠 빌링키 발급"""
+    try:
+        auth_string = base64.b64encode(f"{TOSS_SECRET_KEY}:".encode()).decode()
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.tosspayments.com/v1/billing/authorizations/issue",
+                headers={
+                    "Authorization": f"Basic {auth_string}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "authKey": request.auth_key,
+                    "customerKey": request.customer_key,
+                },
+            )
+        
+        if response.status_code != 200:
+            error_data = response.json()
+            print(f"빌링키 발급 오류: {error_data}")
+            return {
+                "success": False, 
+                "error": error_data.get("message", "빌링키 발급 실패")
+            }
+        
+        billing_data = response.json()
+        billing_key = billing_data.get("billingKey")
+        
+        return {
+            "success": True,
+            "billing_key": billing_key,
+            "card_company": billing_data.get("card", {}).get("issuerCode"),
+            "card_number": billing_data.get("card", {}).get("number"),
+        }
+        
+    except Exception as e:
+        print(f"빌링키 발급 오류: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/billing/payment")
+async def billing_payment(request: BillingPaymentRequest):
+    """빌링키로 결제 실행"""
+    if request.plan not in SUBSCRIPTION_PLANS:
+        return {"success": False, "error": "잘못된 플랜입니다"}
+    
+    try:
+        plan_info = SUBSCRIPTION_PLANS[request.plan]
+        
+        # 연간 결제 시 20% 할인
+        amount = plan_info["price"]
+        if request.is_annual:
+            amount = int(plan_info["price"] * 0.8 * 12)  # 연간 결제
+        
+        order_id = f"sub_{request.user_id[:8]}_{int(datetime.now().timestamp())}"
+        order_name = f"AUTOPIC {plan_info['name']} 구독"
+        if request.is_annual:
+            order_name += " (연간)"
+        
+        auth_string = base64.b64encode(f"{TOSS_SECRET_KEY}:".encode()).decode()
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.tosspayments.com/v1/billing/" + request.billing_key,
+                headers={
+                    "Authorization": f"Basic {auth_string}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "customerKey": request.customer_key,
+                    "amount": amount,
+                    "orderId": order_id,
+                    "orderName": order_name,
+                },
+            )
+        
+        if response.status_code != 200:
+            error_data = response.json()
+            print(f"빌링 결제 오류: {error_data}")
+            return {
+                "success": False, 
+                "error": error_data.get("message", "결제 실패")
+            }
+        
+        payment_data = response.json()
+        
+        return {
+            "success": True,
+            "payment_key": payment_data.get("paymentKey"),
+            "order_id": order_id,
+            "amount": amount,
+            "method": payment_data.get("method"),
+        }
+        
+    except Exception as e:
+        print(f"빌링 결제 오류: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/billing/subscribe")
+async def subscribe_with_billing(request: BillingSuccessRequest):
+    """빌링키 발급 + 첫 결제 + 구독 생성 (통합 API)"""
+    if request.plan not in SUBSCRIPTION_PLANS:
+        return {"success": False, "error": "잘못된 플랜입니다"}
+    
+    try:
+        plan_info = SUBSCRIPTION_PLANS[request.plan]
+        
+        # 1. 이미 활성 구독이 있는지 확인
+        try:
+            existing = (
+                supabase.table("subscriptions")
+                .select("id")
+                .eq("user_id", request.user_id)
+                .eq("status", "active")
+                .execute()
+            )
+            if existing.data:
+                return {"success": False, "error": "이미 활성화된 구독이 있습니다"}
+        except Exception:
+            pass
+        
+        # 2. 빌링키 발급
+        auth_string = base64.b64encode(f"{TOSS_SECRET_KEY}:".encode()).decode()
+        
+        async with httpx.AsyncClient() as client:
+            billing_response = await client.post(
+                "https://api.tosspayments.com/v1/billing/authorizations/issue",
+                headers={
+                    "Authorization": f"Basic {auth_string}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "authKey": request.auth_key,
+                    "customerKey": request.customer_key,
+                },
+            )
+        
+        if billing_response.status_code != 200:
+            error_data = billing_response.json()
+            return {"success": False, "error": error_data.get("message", "카드 등록 실패")}
+        
+        billing_data = billing_response.json()
+        billing_key = billing_data.get("billingKey")
+        
+        # 3. 첫 결제 실행
+        amount = plan_info["price"]
+        months = 1
+        if request.is_annual:
+            amount = int(plan_info["price"] * 0.8 * 12)
+            months = 12
+        
+        order_id = f"sub_{request.user_id[:8]}_{int(datetime.now().timestamp())}"
+        order_name = f"AUTOPIC {plan_info['name']} 구독"
+        if request.is_annual:
+            order_name += " (연간)"
+        
+        async with httpx.AsyncClient() as client:
+            payment_response = await client.post(
+                f"https://api.tosspayments.com/v1/billing/{billing_key}",
+                headers={
+                    "Authorization": f"Basic {auth_string}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "customerKey": request.customer_key,
+                    "amount": amount,
+                    "orderId": order_id,
+                    "orderName": order_name,
+                },
+            )
+        
+        if payment_response.status_code != 200:
+            error_data = payment_response.json()
+            return {"success": False, "error": error_data.get("message", "결제 실패")}
+        
+        payment_data = payment_response.json()
+        
+        # 4. 구독 생성
+        period_end = (datetime.now() + timedelta(days=30 * months)).isoformat()
+        
+        subscription_data = {
+            "user_id": request.user_id,
+            "plan": request.plan,
+            "plan_name": plan_info["name"],
+            "monthly_credits": plan_info["credits"],
+            "price": plan_info["price"],
+            "billing_key": billing_key,
+            "customer_key": request.customer_key,
+            "status": "active",
+            "current_period_start": datetime.now().isoformat(),
+            "current_period_end": period_end,
+            "next_billing_date": period_end,
+            "last_credit_granted_at": datetime.now().isoformat(),
+            "credits_granted_this_period": plan_info["credits"] * months,
+        }
+        
+        insert_result = supabase.table("subscriptions").insert(subscription_data).execute()
+        
+        if not insert_result.data:
+            return {"success": False, "error": "구독 생성 실패"}
+        
+        subscription_id = insert_result.data[0]["id"]
+        
+        # 5. 프로필 tier 업데이트
+        supabase.table("profiles").update({"tier": request.plan}).eq(
+            "id", request.user_id
+        ).execute()
+        
+        # 6. 크레딧 추가 (연간은 12개월치)
+        total_credits = plan_info["credits"] * months
+        await add_credits(request.user_id, total_credits)
+        
+        # 7. 결제 기록
+        supabase.table("payments").insert({
+            "user_id": request.user_id,
+            "order_id": order_id,
+            "amount": amount,
+            "credits": total_credits,
+            "status": "completed",
+            "payment_key": payment_data.get("paymentKey"),
+            "method": payment_data.get("method", ""),
+            "paid_at": datetime.now().isoformat(),
+        }).execute()
+        
+        # 8. 히스토리 기록
+        try:
+            supabase.table("subscription_history").insert({
+                "subscription_id": subscription_id,
+                "user_id": request.user_id,
+                "event_type": "created",
+                "plan": request.plan,
+                "amount": amount,
+                "credits_granted": total_credits,
+                "payment_key": payment_data.get("paymentKey"),
+                "metadata": {"is_annual": request.is_annual},
+            }).execute()
+        except Exception:
+            pass
+        
+        return {
+            "success": True,
+            "subscription_id": subscription_id,
+            "plan": request.plan,
+            "plan_name": plan_info["name"],
+            "credits_granted": total_credits,
+            "amount_paid": amount,
+            "next_billing_date": period_end,
+            "card_number": billing_data.get("card", {}).get("number"),
+        }
+        
+    except Exception as e:
+        print(f"구독 결제 오류: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/billing/config")
+async def get_billing_config():
+    """빌링용 설정 반환"""
+    return {
+        "client_key": TOSS_CLIENT_KEY,
+        "plans": SUBSCRIPTION_PLANS,
+    }
+
+
 @app.post("/api/subscription/cancel")
 async def cancel_subscription(request: SubscriptionCancelRequest):
     """구독 취소"""
