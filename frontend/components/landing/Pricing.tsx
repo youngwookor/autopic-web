@@ -147,7 +147,8 @@ export default function Pricing() {
       // 빌링 위젯 실행
       const payment = tossPayments.payment({ customerKey });
 
-      await payment.requestBillingAuth('CARD', {
+      await payment.requestBillingAuth({
+        method: 'CARD',
         successUrl: `${window.location.origin}/pricing/billing-success?plan=${plan}&isAnnual=${isAnnual}`,
         failUrl: `${window.location.origin}/pricing/billing-fail`,
       });
