@@ -57,7 +57,7 @@ function BillingSuccessContent() {
           // 크레딧 잔액 업데이트
           const creditsResponse = await fetch(`${API_URL}/api/credits/${user.id}`);
           const creditsData = await creditsResponse.json();
-          setBalance({ credits: creditsData.credits || 0 });
+          setBalance(creditsData.credits || 0);
           
           toast.success('구독이 시작되었습니다!');
         } else {
