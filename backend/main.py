@@ -2678,7 +2678,9 @@ async def subscribe_with_billing(request: BillingSuccessRequest):
         payment_data = payment_response.json()
         
         # 4. 구독 생성
-        period_end = (datetime.now() + timedelta(days=30 * months)).isoformat()
+        # 월간 리셋형: 연간이든 월간이든 결제 기간만 다르고 크레딧은 매월 리셋
+        billing_period_end = (datetime.now() + timedelta(days=30 * months)).isoformat()  # 결제 갱신일
+        credit_period_end = (datetime.now() + timedelta(days=30)).isoformat()  # 다음 크레딧 리셋일
         
         subscription_data = {
             "user_id": request.user_id,
@@ -2690,10 +2692,10 @@ async def subscribe_with_billing(request: BillingSuccessRequest):
             "customer_key": request.customer_key,
             "status": "active",
             "current_period_start": datetime.now().isoformat(),
-            "current_period_end": period_end,
-            "next_billing_date": period_end,
+            "current_period_end": billing_period_end,
+            "next_billing_date": billing_period_end,
             "last_credit_granted_at": datetime.now().isoformat(),
-            "credits_granted_this_period": plan_info["credits"] * months,
+            "credits_granted_this_period": plan_info["credits"],  # 항상 월간 크레딧만
         }
         
         insert_result = supabase.table("subscriptions").insert(subscription_data).execute()
@@ -2708,8 +2710,8 @@ async def subscribe_with_billing(request: BillingSuccessRequest):
             "id", request.user_id
         ).execute()
         
-        # 6. 크레딧 추가 (연간은 12개월치)
-        total_credits = plan_info["credits"] * months
+        # 6. 크레딧 추가 (월간 리셋형: 연간이든 월간이든 첫 달 크레딧만 지급)
+        total_credits = plan_info["credits"]  # 항상 월간 크레딧만
         await add_credits(request.user_id, total_credits)
         
         # 7. 결제 기록

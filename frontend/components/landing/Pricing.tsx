@@ -579,7 +579,7 @@ export default function Pricing() {
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-zinc-500">지급 크레딧</span>
-                      <span className="font-bold text-[#87D039]">{isAnnual ? '1,200' : '100'} 크레딧</span>
+                      <span className="font-bold text-[#87D039]">100 크레딧/월</span>
                     </div>
                     <div className="border-t pt-2 mt-2">
                       <div className="flex justify-between">
@@ -592,8 +592,8 @@ export default function Pricing() {
                   {/* 안내 문구 */}
                   <p className="text-xs text-zinc-400 text-center">
                     {isAnnual 
-                      ? '연간 결제는 1년치 크레딧이 즉시 지급되며, 1년 후 자동 갱신됩니다.'
-                      : '월간 결제는 매월 자동 갱신되며, 언제든 취소 가능합니다.'
+                      ? '연간 결제는 20% 할인된 가격으로 1년간 구독하며, 매월 100 크레딧이 지급됩니다. 미사용 크레딧은 다음 달 소멸됩니다.'
+                      : '월간 결제는 매월 100 크레딧이 지급되며, 미사용 크레딧은 다음 달 소멸됩니다. 언제든 취소 가능합니다.'
                     }
                   </p>
 
