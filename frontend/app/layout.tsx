@@ -12,38 +12,38 @@ const siteUrl = 'https://autopic.app';
 export const metadata: Metadata = {
   // 기본 메타데이터
   title: {
-    default: "AUTOPIC - AI 상품 이미지 생성 | 스마트스토어, 쿠팡 셀러 필수 도구",
-    template: "%s | AUTOPIC",
+    default: "오토픽 AUTOPIC - AI 상품 이미지 자동 생성",
+    template: "%s | 오토픽 AUTOPIC",
   },
-  description: "AI가 완성하는 커머스 사진의 새로운 기준. 상품 사진만 업로드하면 전문 스튜디오 퀄리티의 상품 이미지를 자동 생성합니다. 스마트스토어, 쿠팡, 11번가 셀러를 위한 AI 이미지 생성 서비스.",
+  description: "AI가 상품 사진을 스튜디오 퀄리티로 자동 생성. 스마트스토어, 쿠팡 셀러 필수 도구",
   keywords: [
+    // 브랜드 (최상단 위치)
+    "오토픽",
+    "AUTOPIC",
+    "오토픽 AI",
+    "autopic",
     // 핵심 키워드
     "AI 이미지 생성",
-    "이미지 생성",
     "AI 상품 이미지",
     "상품 사진 생성",
+    "AI 상품사진",
     // 촬영 관련
     "상품 촬영",
-    "이미지 촬영",
     "상품 촬영 대행",
     "상품 사진 촬영",
     "모델 촬영",
-    "착용샷 촬영",
+    "착용샷",
     // 셀러 타겟
     "스마트스토어 상품사진",
     "쿠팡 상품이미지",
     "11번가 상품사진",
-    "온라인 셀러 도구",
+    "온라인 셀러",
     "이커머스 사진",
     // 기능 관련
     "AI 모델 사진",
     "AI 착용샷",
-    "상품 배경 제거",
-    "배경 합성",
+    "배경 제거",
     "누끼 따기",
-    // 브랜드
-    "AUTOPIC",
-    "오토픽",
   ],
   authors: [{ name: "AUTOPIC" }],
   creator: "AUTOPIC",
@@ -67,15 +67,15 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'ko_KR',
     url: siteUrl,
-    siteName: 'AUTOPIC',
-    title: 'AUTOPIC - AI 상품 이미지 생성',
-    description: 'AI가 완성하는 커머스 사진의 새로운 기준. 상품 사진만 업로드하면 전문 스튜디오 퀄리티의 상품 이미지를 자동 생성합니다.',
+    siteName: '오토픽 AUTOPIC',
+    title: '오토픽 AUTOPIC - AI 상품 이미지 자동 생성',
+    description: 'AI가 상품 사진을 스튜디오 퀄리티로 자동 생성. 스마트스토어, 쿠팡 셀러 필수 도구',
     images: [
       {
         url: `${siteUrl}/og-image.png`,
         width: 1200,
         height: 630,
-        alt: 'AUTOPIC - AI 상품 이미지 생성 서비스',
+        alt: '오토픽 AUTOPIC - AI 상품 이미지 생성',
       },
     ],
   },
@@ -83,8 +83,8 @@ export const metadata: Metadata = {
   // 트위터 카드
   twitter: {
     card: 'summary_large_image',
-    title: 'AUTOPIC - AI 상품 이미지 생성',
-    description: 'AI가 완성하는 커머스 사진의 새로운 기준',
+    title: '오토픽 AUTOPIC - AI 상품 이미지 자동 생성',
+    description: 'AI가 상품 사진을 스튜디오 퀄리티로 자동 생성',
     images: [`${siteUrl}/og-image.png`],
   },
   
@@ -147,11 +147,13 @@ export default function RootLayout({
             __html: JSON.stringify({
               '@context': 'https://schema.org',
               '@type': 'SoftwareApplication',
-              name: 'AUTOPIC',
-              description: 'AI 상품 이미지 생성 서비스',
+              name: '오토픽 AUTOPIC',
+              alternateName: ['AUTOPIC', '오토픽', 'autopic'],
+              description: 'AI가 상품 사진을 스튜디오 퀄리티로 자동 생성. 스마트스토어, 쿠팡 셀러 필수 도구',
               url: siteUrl,
               applicationCategory: 'BusinessApplication',
               operatingSystem: 'Web',
+              inLanguage: 'ko',
               offers: {
                 '@type': 'Offer',
                 price: '0',
@@ -162,6 +164,27 @@ export default function RootLayout({
                 '@type': 'AggregateRating',
                 ratingValue: '4.8',
                 ratingCount: '100',
+              },
+            }),
+          }}
+        />
+        {/* Organization 구조화 데이터 */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'Organization',
+              name: '오토픽 AUTOPIC',
+              alternateName: ['AUTOPIC', '오토픽'],
+              url: siteUrl,
+              logo: `${siteUrl}/apple-touch-icon.png`,
+              sameAs: [],
+              contactPoint: {
+                '@type': 'ContactPoint',
+                email: 'support@autopic.app',
+                contactType: 'customer service',
+                availableLanguage: 'Korean',
               },
             }),
           }}
