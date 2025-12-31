@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Noto_Sans_KR } from "next/font/google";
 import "./globals.css";
 import ToastProvider from "@/components/ToastProvider";
 import AuthProvider from "@/components/AuthProvider";
@@ -6,6 +7,15 @@ import InAppBrowserDetector from "@/components/InAppBrowserDetector";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import Analytics from "@/components/Analytics";
 import ChannelTalk from "@/components/ChannelTalk";
+
+// 폰트 최적화 - next/font 사용
+const notoSansKR = Noto_Sans_KR({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '700', '900'],
+  display: 'swap',
+  preload: true,
+  fallback: ['system-ui', 'sans-serif'],
+});
 
 const siteUrl = 'https://autopic.app';
 
@@ -136,10 +146,9 @@ export default function RootLayout({
         <link rel="icon" href="/favicon-32x32.png" sizes="32x32" type="image/png" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         
-        <link 
-          href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" 
-          rel="stylesheet" 
-        />
+        {/* Preconnect for performance */}
+        <link rel="preconnect" href="https://images.unsplash.com" />
+        <link rel="dns-prefetch" href="https://images.unsplash.com" />
         {/* JSON-LD 구조화 데이터 */}
         <script
           type="application/ld+json"
@@ -190,7 +199,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="antialiased">
+      <body className={`${notoSansKR.className} antialiased`}>
         {/* Analytics (GA4 + Meta Pixel) */}
         <Analytics />
         

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { ArrowRight, Play, X } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 
@@ -244,7 +245,14 @@ export default function Hero() {
                   currentSlide === idx ? 'opacity-100 scale-100' : 'opacity-0 scale-105'
                 }`}
               >
-                <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                <Image 
+                  src={product.image} 
+                  alt={product.name} 
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                  priority={idx === 0}
+                />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                 <div className="absolute bottom-5 left-5">
                   <span className="text-white/70 text-xs uppercase tracking-wider">{product.category}</span>
@@ -410,7 +418,14 @@ export default function Hero() {
                         currentSlide === idx ? 'opacity-100 scale-100' : 'opacity-0 scale-105'
                       }`}
                     >
-                      <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                      <Image 
+                        src={product.image} 
+                        alt={product.name} 
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 1024px) 100vw, 420px"
+                        priority={idx === 0}
+                      />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                       <div className="absolute bottom-6 left-6 right-6">
                         <span className="text-white/70 text-xs uppercase tracking-wider">{product.category}</span>
@@ -468,10 +483,12 @@ export default function Hero() {
                   className="absolute -bottom-6 left-0 w-28 h-28 rounded-2xl overflow-hidden shadow-xl border-4 border-white animate-float"
                   style={{ animationDelay: '0.5s' }}
                 >
-                  <img
+                  <Image
                     src={products[(currentSlide + 1) % products.length].image}
                     alt="Next"
-                    className="w-full h-full object-cover"
+                    fill
+                    className="object-cover"
+                    sizes="112px"
                   />
                   <div className="absolute inset-0 bg-black/20" />
                   <div className="absolute bottom-2 left-2 text-white text-[10px] font-medium">Next</div>
