@@ -1107,117 +1107,6 @@ export default function Studio() {
                           </div>
                         ))}
                       </div>
-
-                      {/* 360° 비디오 섹션 - 더 눈에 띄는 디자인 */}
-                      <div className="mt-4 md:mt-5 relative overflow-hidden">
-                        {/* 배경 그라데이션 + 애니메이션 */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 rounded-xl md:rounded-2xl" />
-                        <div className="absolute inset-0 bg-[url('/samples/pattern.svg')] opacity-10" />
-                        
-                        <div className="relative p-4 md:p-5">
-                          {/* 상단: 타이틀 + 샘플 버튼 */}
-                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                                <RotateCw size={20} className="text-white md:w-6 md:h-6 animate-spin" style={{animationDuration: '3s'}} />
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <h4 className="text-sm md:text-base font-bold text-white">360° 회전 비디오</h4>
-                                  <span className="px-2 py-0.5 bg-yellow-400 text-yellow-900 text-[9px] md:text-[10px] font-bold rounded-full">NEW</span>
-                                </div>
-                                <p className="text-white/70 text-[10px] md:text-xs mt-0.5">
-                                  AI가 4장의 이미지를 합성하여 360° 회전 영상을 만듭니다
-                                </p>
-                              </div>
-                            </div>
-                            
-                            {/* 샘플 보기 버튼 */}
-                            <button
-                              onClick={() => setShowSampleModal(true)}
-                              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white rounded-lg text-[10px] md:text-xs font-medium transition-colors"
-                            >
-                              <Play size={12} className="md:w-3.5 md:h-3.5" /> 샘플 보기
-                            </button>
-                          </div>
-                          
-                          {/* 비디오 생성 상태에 따른 UI */}
-                          {videoStatus === 'idle' && (
-                            <div className="flex flex-col sm:flex-row gap-2">
-                              <button
-                                onClick={() => setShowVideoModal(true)}
-                                disabled={credits < VIDEO_CREDITS}
-                                className="flex-1 py-2.5 md:py-3 bg-white text-purple-600 rounded-lg md:rounded-xl text-xs md:text-sm font-bold hover:bg-white/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                              >
-                                <Video size={14} className="md:w-4 md:h-4" />
-                                비디오 만들기 ({VIDEO_CREDITS}크레딧)
-                              </button>
-                            </div>
-                          )}
-                          
-                          {(videoStatus === 'pending' || videoStatus === 'processing') && (
-                            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-2">
-                                  <Loader2 size={16} className="animate-spin text-white" />
-                                  <span className="text-white text-xs md:text-sm font-bold">비디오 생성 중...</span>
-                                </div>
-                                <span className="text-white/80 text-xs font-bold">{videoProgress}%</span>
-                              </div>
-                              <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden">
-                                <div 
-                                  className="h-full bg-white transition-all duration-500 ease-out" 
-                                  style={{width: `${videoProgress}%`}}
-                                />
-                              </div>
-                              <p className="text-white/60 text-[10px] mt-2 text-center">
-                                ⏳ 약 2-5분 소요 · 페이지를 닫지 마세요
-                              </p>
-                            </div>
-                          )}
-                          
-                          {videoStatus === 'completed' && (
-                            <div className="flex flex-col sm:flex-row gap-2">
-                              <button
-                                onClick={handleVideoDownload}
-                                className="flex-1 py-2.5 md:py-3 bg-green-500 text-white rounded-lg md:rounded-xl text-xs md:text-sm font-bold hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
-                              >
-                                <CheckCircle size={14} className="md:w-4 md:h-4" />
-                                완료! 다운로드하기
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setVideoStatus('idle');
-                                  setVideoId(null);
-                                  setVideoUrl(null);
-                                }}
-                                className="py-2.5 md:py-3 px-4 bg-white/20 text-white rounded-lg md:rounded-xl text-xs md:text-sm font-medium hover:bg-white/30 transition-colors"
-                              >
-                                새로 만들기
-                              </button>
-                            </div>
-                          )}
-                          
-                          {videoStatus === 'failed' && (
-                            <div className="bg-red-500/20 backdrop-blur-sm rounded-xl p-4">
-                              <div className="flex items-center gap-2 mb-2">
-                                <AlertCircle size={16} className="text-red-200" />
-                                <span className="text-red-200 text-xs md:text-sm font-bold">생성 실패</span>
-                              </div>
-                              <p className="text-red-200/80 text-[10px] md:text-xs mb-3">{videoError}</p>
-                              <button
-                                onClick={() => {
-                                  setVideoStatus('idle');
-                                  setVideoError(null);
-                                }}
-                                className="w-full py-2 bg-white/20 text-white rounded-lg text-xs font-bold hover:bg-white/30 transition-colors"
-                              >
-                                다시 시도
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
                     </>
                   ) : (
                     <div className="flex-1 flex items-center justify-center">
@@ -1229,6 +1118,131 @@ export default function Studio() {
                       </div>
                     </div>
                   )}
+                </div>
+                
+                {/* 360° 비디오 섹션 - 항상 보임 */}
+                <div className={`mt-4 md:mt-5 relative overflow-hidden ${generatedImages.length === 0 ? 'opacity-80' : ''}`}>
+                  {/* 배경 그라데이션 */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 rounded-xl md:rounded-2xl" />
+                  
+                  <div className="relative p-4 md:p-5">
+                    {/* 상단: 타이틀 + 샘플 버튼 */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
+                          <RotateCw size={20} className="text-white md:w-6 md:h-6 animate-spin" style={{animationDuration: '3s'}} />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm md:text-base font-bold text-white">360° 회전 비디오</h4>
+                            <span className="px-2 py-0.5 bg-yellow-400 text-yellow-900 text-[9px] md:text-[10px] font-bold rounded-full">NEW</span>
+                          </div>
+                          <p className="text-white/70 text-[10px] md:text-xs mt-0.5">
+                            {generatedImages.length === 0 
+                              ? '먼저 이미지 4장을 생성하면 360° 비디오를 만들 수 있어요'
+                              : 'AI가 4장의 이미지를 합성하여 360° 회전 영상을 만듭니다'
+                            }
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {/* 샘플 보기 버튼 */}
+                      <button
+                        onClick={() => setShowSampleModal(true)}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white rounded-lg text-[10px] md:text-xs font-medium transition-colors"
+                      >
+                        <Play size={12} className="md:w-3.5 md:h-3.5" /> 샘플 보기
+                      </button>
+                    </div>
+                    
+                    {/* 비디오 생성 상태에 따른 UI */}
+                    {videoStatus === 'idle' && (
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <button
+                          onClick={() => {
+                            if (generatedImages.length < 4) {
+                              toast.error('먼저 이미지 4장을 생성해주세요');
+                              return;
+                            }
+                            setShowVideoModal(true);
+                          }}
+                          className={`flex-1 py-2.5 md:py-3 rounded-lg md:rounded-xl text-xs md:text-sm font-bold transition-colors flex items-center justify-center gap-2 ${
+                            generatedImages.length >= 4
+                              ? 'bg-white text-purple-600 hover:bg-white/90'
+                              : 'bg-white/30 text-white/80 cursor-pointer'
+                          }`}
+                        >
+                          <Video size={14} className="md:w-4 md:h-4" />
+                          {generatedImages.length >= 4 
+                            ? `비디오 만들기 (${VIDEO_CREDITS}크레딧)`
+                            : `이미지 생성 후 사용 가능 (${VIDEO_CREDITS}크레딧)`
+                          }
+                        </button>
+                      </div>
+                    )}
+                    
+                    {(videoStatus === 'pending' || videoStatus === 'processing') && (
+                      <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Loader2 size={16} className="animate-spin text-white" />
+                            <span className="text-white text-xs md:text-sm font-bold">비디오 생성 중...</span>
+                          </div>
+                          <span className="text-white/80 text-xs font-bold">{videoProgress}%</span>
+                        </div>
+                        <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-white transition-all duration-500 ease-out" 
+                            style={{width: `${videoProgress}%`}}
+                          />
+                        </div>
+                        <p className="text-white/60 text-[10px] mt-2 text-center">
+                          ⏳ 약 2-5분 소요 · 페이지를 닫지 마세요
+                        </p>
+                      </div>
+                    )}
+                    
+                    {videoStatus === 'completed' && (
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <button
+                          onClick={handleVideoDownload}
+                          className="flex-1 py-2.5 md:py-3 bg-green-500 text-white rounded-lg md:rounded-xl text-xs md:text-sm font-bold hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+                        >
+                          <CheckCircle size={14} className="md:w-4 md:h-4" />
+                          완료! 다운로드하기
+                        </button>
+                        <button
+                          onClick={() => {
+                            setVideoStatus('idle');
+                            setVideoId(null);
+                            setVideoUrl(null);
+                          }}
+                          className="py-2.5 md:py-3 px-4 bg-white/20 text-white rounded-lg md:rounded-xl text-xs md:text-sm font-medium hover:bg-white/30 transition-colors"
+                        >
+                          새로 만들기
+                        </button>
+                      </div>
+                    )}
+                    
+                    {videoStatus === 'failed' && (
+                      <div className="bg-red-500/20 backdrop-blur-sm rounded-xl p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <AlertCircle size={16} className="text-red-200" />
+                          <span className="text-red-200 text-xs md:text-sm font-bold">생성 실패</span>
+                        </div>
+                        <p className="text-red-200/80 text-[10px] md:text-xs mb-3">{videoError}</p>
+                        <button
+                          onClick={() => {
+                            setVideoStatus('idle');
+                            setVideoError(null);
+                          }}
+                          className="w-full py-2 bg-white/20 text-white rounded-lg text-xs font-bold hover:bg-white/30 transition-colors"
+                        >
+                          다시 시도
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
