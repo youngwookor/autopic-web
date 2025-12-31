@@ -39,3 +39,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Google Cloud credentials (비밀 파일)
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+
+# Video output files (용량 큼)
+video/output/
+video/*.json
