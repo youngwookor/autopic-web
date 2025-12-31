@@ -117,6 +117,9 @@ export default function Studio() {
   
   // 샘플 비디오 모달
   const [showSampleModal, setShowSampleModal] = useState(false);
+  
+  // 생성된 비디오 뷰어 모달
+  const [showVideoViewer, setShowVideoViewer] = useState(false);
 
   const mainInputRef = useRef<HTMLInputElement>(null);
   const subInputRef = useRef<HTMLInputElement>(null);
@@ -1203,21 +1206,30 @@ export default function Studio() {
                     )}
                     
                     {videoStatus === 'completed' && (
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <button
-                          onClick={handleVideoDownload}
-                          className="flex-1 py-2.5 md:py-3 bg-green-500 text-white rounded-lg md:rounded-xl text-xs md:text-sm font-bold hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
-                        >
-                          <CheckCircle size={14} className="md:w-4 md:h-4" />
-                          완료! 다운로드하기
-                        </button>
+                      <div className="flex flex-col gap-2">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setShowVideoViewer(true)}
+                            className="flex-1 py-2.5 md:py-3 bg-white text-purple-600 rounded-lg md:rounded-xl text-xs md:text-sm font-bold hover:bg-white/90 transition-colors flex items-center justify-center gap-2"
+                          >
+                            <Play size={14} className="md:w-4 md:h-4" />
+                            영상 보기
+                          </button>
+                          <button
+                            onClick={handleVideoDownload}
+                            className="flex-1 py-2.5 md:py-3 bg-green-500 text-white rounded-lg md:rounded-xl text-xs md:text-sm font-bold hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+                          >
+                            <Download size={14} className="md:w-4 md:h-4" />
+                            다운로드
+                          </button>
+                        </div>
                         <button
                           onClick={() => {
                             setVideoStatus('idle');
                             setVideoId(null);
                             setVideoUrl(null);
                           }}
-                          className="py-2.5 md:py-3 px-4 bg-white/20 text-white rounded-lg md:rounded-xl text-xs md:text-sm font-medium hover:bg-white/30 transition-colors"
+                          className="py-2 px-4 bg-white/10 text-white/70 rounded-lg text-[10px] md:text-xs font-medium hover:bg-white/20 transition-colors"
                         >
                           새로 만들기
                         </button>
@@ -1383,14 +1395,76 @@ export default function Studio() {
         </div>
       )}
 
+      {/* 생성된 비디오 뷰어 모달 */}
+      {showVideoViewer && videoId && (
+        <div 
+          className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4"
+          onClick={() => setShowVideoViewer(false)}
+        >
+          <div 
+            className="bg-zinc-900 rounded-t-2xl md:rounded-2xl w-full md:max-w-3xl shadow-2xl overflow-hidden max-h-[90vh] md:max-h-[85vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* 비디오 플레이어 */}
+            <div className="relative aspect-video bg-black flex-shrink-0">
+              <video
+                src={`${API_URL}/api/video/download/${videoId}`}
+                autoPlay
+                loop
+                controls
+                playsInline
+                className="w-full h-full object-contain"
+              />
+              <button
+                onClick={() => setShowVideoViewer(false)}
+                className="absolute top-3 right-3 p-2 bg-black/50 hover:bg-black/70 rounded-full transition-colors"
+              >
+                <X size={20} className="text-white" />
+              </button>
+              
+              {/* 배지 */}
+              <div className="absolute top-3 left-3 px-3 py-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-[10px] md:text-xs font-bold rounded-full flex items-center gap-1.5">
+                <CheckCircle size={12} />
+                생성 완료
+              </div>
+            </div>
+            
+            {/* 하단 버튼 */}
+            <div className="p-4 md:p-5 flex items-center justify-between border-t border-zinc-800">
+              <div className="text-zinc-400 text-xs md:text-sm">
+                360° 회전 비디오 · 8초 HD
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowVideoViewer(false)}
+                  className="px-4 py-2 bg-zinc-700 text-white rounded-lg text-xs md:text-sm font-medium hover:bg-zinc-600 transition-colors"
+                >
+                  닫기
+                </button>
+                <button
+                  onClick={() => {
+                    handleVideoDownload();
+                    setShowVideoViewer(false);
+                  }}
+                  className="px-4 py-2 bg-green-500 text-white rounded-lg text-xs md:text-sm font-bold hover:bg-green-600 transition-colors flex items-center gap-1.5"
+                >
+                  <Download size={14} />
+                  다운로드
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 샘플 비디오 보기 모달 */}
       {showSampleModal && (
         <div 
-          className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-end md:items-center justify-center"
+          className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4"
           onClick={() => setShowSampleModal(false)}
         >
           <div 
-            className="bg-zinc-900 rounded-t-2xl md:rounded-2xl md:rounded-3xl w-full md:max-w-2xl md:mx-4 shadow-2xl overflow-hidden max-h-[90vh] md:max-h-[85vh] flex flex-col"
+            className="bg-zinc-900 rounded-t-2xl md:rounded-2xl w-full md:max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] md:max-h-[80vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
             {/* 비디오 플레이어 */}
