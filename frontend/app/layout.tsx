@@ -3,6 +3,7 @@ import "./globals.css";
 import ToastProvider from "@/components/ToastProvider";
 import AuthProvider from "@/components/AuthProvider";
 import InAppBrowserDetector from "@/components/InAppBrowserDetector";
+import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import Analytics from "@/components/Analytics";
 import ChannelTalk from "@/components/ChannelTalk";
 
@@ -177,6 +178,7 @@ export default function RootLayout({
         <AuthProvider>
           {children}
           <InAppBrowserDetector />
+          <PWAInstallPrompt />
         </AuthProvider>
       </body>
     </html>
