@@ -3363,6 +3363,161 @@ async def get_video_info():
 
 
 # ============================================================================
+# 구독 크레딧 리셋 (매월 자동 실행)
+# ============================================================================
+
+@app.post("/api/subscription/reset-credits")
+async def reset_subscription_credits(
+    x_cleanup_secret: str = Header(None, alias="X-Cleanup-Secret")
+):
+    """
+    월간 리셋형 구독 크레딧 처리 (매일 크론잡으로 실행)
+    - last_credit_granted_at이 30일 이상 경과한 활성 구독자 대상
+    - 기존 크레딧 → 월간 크레딧으로 리셋 (누적 아님)
+    - 월간 크레딧 새로 지급
+    """
+    
+    # 보안: 시크릿 키 확인
+    if x_cleanup_secret != CLEANUP_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        # 30일 전 날짜 계산
+        cutoff_date = datetime.now() - timedelta(days=30)
+        cutoff_iso = cutoff_date.isoformat()
+        
+        # 크레딧 리셋 대상 구독자 조회
+        result = (
+            supabase.table("subscriptions")
+            .select("id, user_id, plan, monthly_credits, last_credit_granted_at")
+            .eq("status", "active")
+            .lt("last_credit_granted_at", cutoff_iso)
+            .execute()
+        )
+        
+        eligible_subscriptions = result.data or []
+        
+        if not eligible_subscriptions:
+            return {
+                "success": True,
+                "message": "리셋 대상 구독자가 없습니다",
+                "reset_count": 0,
+            }
+        
+        reset_count = 0
+        failed_count = 0
+        details = []
+        
+        for subscription in eligible_subscriptions:
+            try:
+                user_id = subscription["user_id"]
+                subscription_id = subscription["id"]
+                monthly_credits = subscription.get("monthly_credits", 100)
+                
+                # 1. 기존 크레딧 → 월간 크레딧으로 리셋 (누적 아님!)
+                supabase.table("profiles").update({
+                    "credits": monthly_credits
+                }).eq("id", user_id).execute()
+                
+                # 2. 구독 정보 업데이트
+                supabase.table("subscriptions").update({
+                    "last_credit_granted_at": datetime.now().isoformat(),
+                    "credits_granted_this_period": monthly_credits,
+                }).eq("id", subscription_id).execute()
+                
+                # 3. 히스토리 기록
+                try:
+                    supabase.table("subscription_history").insert({
+                        "subscription_id": subscription_id,
+                        "user_id": user_id,
+                        "event_type": "credit_reset",
+                        "plan": subscription.get("plan"),
+                        "credits_granted": monthly_credits,
+                        "metadata": {"previous_granted_at": subscription.get("last_credit_granted_at")},
+                    }).execute()
+                except Exception:
+                    pass
+                
+                # 4. 사용량 기록
+                try:
+                    supabase.table("usages").insert({
+                        "user_id": user_id,
+                        "action": "subscription_credit_reset",
+                        "credits_used": -monthly_credits,
+                        "metadata": {"subscription_id": subscription_id},
+                    }).execute()
+                except Exception:
+                    pass
+                
+                reset_count += 1
+                details.append({
+                    "user_id": user_id[:8] + "...",
+                    "credits_granted": monthly_credits,
+                })
+                
+            except Exception as item_error:
+                print(f"크레딧 리셋 실패 ({subscription.get('id')}): {item_error}")
+                failed_count += 1
+        
+        return {
+            "success": True,
+            "message": f"{reset_count}명의 구독자 크레딧이 리셋되었습니다",
+            "reset_count": reset_count,
+            "failed_count": failed_count,
+            "details": details[:10],
+        }
+        
+    except Exception as e:
+        print(f"크레딧 리셋 오류: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/subscription/reset-status")
+async def get_credit_reset_status():
+    """크레딧 리셋 대상 현황 조회"""
+    try:
+        cutoff_date = datetime.now() - timedelta(days=30)
+        cutoff_iso = cutoff_date.isoformat()
+        
+        pending = (
+            supabase.table("subscriptions")
+            .select("id", count="exact")
+            .eq("status", "active")
+            .lt("last_credit_granted_at", cutoff_iso)
+            .execute()
+        )
+        
+        total_active = (
+            supabase.table("subscriptions")
+            .select("id", count="exact")
+            .eq("status", "active")
+            .execute()
+        )
+        
+        yesterday = (datetime.now() - timedelta(days=1)).isoformat()
+        recently_reset = (
+            supabase.table("subscription_history")
+            .select("id", count="exact")
+            .eq("event_type", "credit_reset")
+            .gt("created_at", yesterday)
+            .execute()
+        )
+        
+        return {
+            "success": True,
+            "pending_reset_count": pending.count or 0,
+            "total_active_subscriptions": total_active.count or 0,
+            "recently_reset_24h": recently_reset.count or 0,
+            "next_check": "매일 00:00 UTC",
+        }
+        
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ============================================================================
 # 서버 실행
 # ============================================================================
 
