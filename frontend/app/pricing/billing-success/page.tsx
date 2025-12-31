@@ -151,14 +151,29 @@ function BillingSuccessContent() {
                 <span className="font-medium">{result?.card_number}</span>
               </div>
             )}
-            <div className="border-t pt-3 mt-3">
+            <div className="border-t pt-3 mt-3 space-y-2">
+              <div className="flex justify-between">
+                <span className="text-zinc-500">구독 시작일</span>
+                <span className="font-medium">
+                  {new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })}
+                </span>
+              </div>
               <div className="flex justify-between">
                 <span className="text-zinc-500">다음 결제일</span>
                 <span className="font-medium">
-                  {result?.next_billing_date ? new Date(result.next_billing_date).toLocaleDateString('ko-KR') : '-'}
+                  {result?.next_billing_date 
+                    ? new Date(result.next_billing_date).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) 
+                    : '-'}
                 </span>
               </div>
             </div>
+          </div>
+          
+          {/* 크레딧 리셋 안내 */}
+          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <p className="text-sm text-amber-800">
+              <span className="font-semibold">📌 크레딧 안내:</span> 매월 {result?.credits_granted?.toLocaleString() || 100} 크레딧이 새로 지급되며, 미사용 크레딧은 다음 달 소멸됩니다.
+            </p>
           </div>
         </div>
 
