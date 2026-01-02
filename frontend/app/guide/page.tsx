@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ChevronRight, ChevronDown, Monitor, Globe, CreditCard, HelpCircle, Download, CheckCircle, ArrowRight, Folder, FolderOpen, FileImage, FileText, Zap, X, Image as ImageIcon, Play, Settings, Check } from 'lucide-react';
+import Navbar from '@/components/Navbar';
+import Footer from '@/components/landing/Footer';
 
 // 로고 컴포넌트
 const AutoPicLogo = ({ className = "w-6 h-6" }: { className?: string }) => (
@@ -124,6 +126,13 @@ export default function GuidePage() {
   const [isAnimating, setIsAnimating] = useState(false);
   const [modalImage, setModalImage] = useState<{ src: string; alt: string } | null>(null);
   const [expandedFolder, setExpandedFolder] = useState<string | null>('product1');
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => setIsScrolled(window.scrollY > 50);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const mainSections: { id: MainSection; title: string; icon: React.ReactNode; subs: { id: SubSection; title: string }[] }[] = [
     {
@@ -195,6 +204,9 @@ export default function GuidePage() {
 
   return (
     <div className="min-h-screen bg-zinc-50">
+      {/* 네비게이션 바 */}
+      <Navbar isScrolled={isScrolled} />
+
       {/* 이미지 모달 */}
       {modalImage && (
         <ImageModal 
@@ -204,23 +216,7 @@ export default function GuidePage() {
         />
       )}
 
-      {/* 헤더 */}
-      <header className="sticky top-0 z-50 bg-white border-b border-zinc-200">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <AutoPicLogo className="w-6 h-6 text-[#87D039] group-hover:scale-110 transition-transform" />
-            <span className="text-lg font-bold text-zinc-900">AUTOPIC</span>
-          </Link>
-          <Link 
-            href="/"
-            className="px-4 py-2 text-sm font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg transition-all"
-          >
-            홈으로
-          </Link>
-        </div>
-      </header>
-
-      <div className="max-w-5xl mx-auto px-6 py-12">
+      <div className="max-w-5xl mx-auto px-6 py-12 pt-28">
         {/* 페이지 타이틀 */}
         <div className="text-center mb-12">
           <h1 className="text-3xl font-bold text-zinc-900 mb-3">사용 가이드</h1>
@@ -889,15 +885,7 @@ export default function GuidePage() {
       </div>
 
       {/* 푸터 */}
-      <footer className="border-t border-zinc-200 bg-white mt-20">
-        <div className="max-w-5xl mx-auto px-6 py-8 flex flex-col md:flex-row items-center justify-between gap-4">
-          <p className="text-zinc-400 text-sm">© 2024 AUTOPIC</p>
-          <div className="flex items-center gap-6 text-sm text-zinc-500">
-            <Link href="/privacy" className="hover:text-zinc-900 transition-colors">개인정보처리방침</Link>
-            <Link href="/terms" className="hover:text-zinc-900 transition-colors">이용약관</Link>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

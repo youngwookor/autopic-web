@@ -16,6 +16,8 @@ import {
   Clock, Download, Info, CalendarDays, RefreshCw, XCircle, Check,
   Video, Play, Loader2, Pause, Share2, RotateCw, Maximize2
 } from 'lucide-react';
+import Navbar from '@/components/Navbar';
+import Footer from '@/components/landing/Footer';
 import { formatNumber } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
@@ -312,12 +314,19 @@ export default function MyPage() {
   const [showCancelSubscriptionModal, setShowCancelSubscriptionModal] = useState(false);
   const [isCancellingSubscription, setIsCancellingSubscription] = useState(false);
 
+  // Navbar 스크롤 상태
+  const [isScrolled, setIsScrolled] = useState(false);
+
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
   const VIDEO_CREDITS = 30;
 
-  // Portal용 mounted 설정
+  // Portal용 mounted 설정 및 스크롤 이벤트
   useEffect(() => {
     setMounted(true);
+    
+    // 스크롤 이벤트 리스너 (Navbar용)
+    const handleScroll = () => setIsScrolled(window.scrollY > 50);
+    window.addEventListener('scroll', handleScroll);
     
     // 페이지 포커스 시 타이틀 깜빡임 중지
     const handleFocus = () => {
@@ -326,6 +335,7 @@ export default function MyPage() {
     window.addEventListener('focus', handleFocus);
     
     return () => {
+      window.removeEventListener('scroll', handleScroll);
       window.removeEventListener('focus', handleFocus);
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
@@ -968,20 +978,10 @@ export default function MyPage() {
 
   return (
     <div className="min-h-screen bg-zinc-50">
-      <header className="bg-white border-b border-zinc-200">
-        <div className="max-w-6xl mx-auto px-4 md:px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="p-2 hover:bg-zinc-100 rounded-lg transition"><ArrowLeft size={20} /></Link>
-            <h1 className="text-xl font-bold">마이페이지</h1>
-          </div>
-          <button onClick={handleLogout} disabled={isLoggingOut} className="flex items-center gap-2 text-zinc-500 hover:text-red-500 transition text-sm disabled:opacity-50">
-            {isLoggingOut ? <div className="w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" /> : <LogOut size={18} />}
-            <span className="hidden md:inline">{isLoggingOut ? '로그아웃 중...' : '로그아웃'}</span>
-          </button>
-        </div>
-      </header>
+      {/* 네비게이션 바 */}
+      <Navbar isScrolled={isScrolled} />
 
-      <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8">
+      <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8 pt-24 md:pt-28">
         <div className="flex gap-1 md:gap-2 bg-white p-1 md:p-1.5 rounded-xl md:rounded-2xl border border-zinc-200 mb-6 md:mb-8 overflow-x-auto">
           {tabs.map((tab) => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id as TabType)}
@@ -2108,6 +2108,9 @@ export default function MyPage() {
         </div>,
         document.body
       )}
+
+      {/* 푸터 */}
+      <Footer />
     </div>
   );
 }
