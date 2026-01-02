@@ -36,7 +36,7 @@ const formatPrice = (price: number) => {
   return new Intl.NumberFormat('ko-KR').format(price);
 };
 
-// 나이스페이 SDK 로드
+// 나이스페이 SDK 타입 선언
 declare global {
   interface Window {
     AUTHNICE?: {
@@ -54,16 +54,68 @@ declare global {
   }
 }
 
+// 나이스페이 SDK 로드 (타이밍 문제 해결)
 function loadNicepaySDK(): Promise<void> {
   return new Promise((resolve, reject) => {
+    // 이미 로드되어 있으면 바로 resolve
     if (window.AUTHNICE) {
+      console.log('나이스페이 SDK 이미 로드됨');
       resolve();
       return;
     }
+
+    // 이미 스크립트 태그가 있는지 확인
+    const existingScript = document.querySelector('script[src="https://pay.nicepay.co.kr/v1/js/"]');
+    if (existingScript) {
+      // 스크립트는 있지만 AUTHNICE가 아직 없으면 대기
+      const checkInterval = setInterval(() => {
+        if (window.AUTHNICE) {
+          clearInterval(checkInterval);
+          console.log('나이스페이 SDK 로드 완료 (대기 후)');
+          resolve();
+        }
+      }, 100);
+      
+      // 5초 후 타임아웃
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        if (!window.AUTHNICE) {
+          reject(new Error('나이스페이 SDK 로드 타임아웃'));
+        }
+      }, 5000);
+      return;
+    }
+
+    // 새로 스크립트 로드
     const script = document.createElement('script');
     script.src = 'https://pay.nicepay.co.kr/v1/js/';
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('나이스페이 SDK 로드 실패'));
+    script.async = true;
+    
+    script.onload = () => {
+      // 스크립트 로드 후 AUTHNICE가 정의될 때까지 대기
+      const checkInterval = setInterval(() => {
+        if (window.AUTHNICE) {
+          clearInterval(checkInterval);
+          console.log('나이스페이 SDK 로드 완료');
+          resolve();
+        }
+      }, 50);
+      
+      // 3초 후 타임아웃
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        if (window.AUTHNICE) {
+          resolve();
+        } else {
+          reject(new Error('나이스페이 SDK 초기화 실패'));
+        }
+      }, 3000);
+    };
+    
+    script.onerror = () => {
+      reject(new Error('나이스페이 SDK 로드 실패'));
+    };
+    
     document.head.appendChild(script);
   });
 }
@@ -78,14 +130,21 @@ function PricingPageContent() {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
+  const [sdkReady, setSdkReady] = useState(false);
   const sliderRef = useRef<HTMLDivElement>(null);
   const { trackViewPricing, trackInitiateCheckout } = useAnalytics();
 
-  // Analytics: 가격 페이지 조회 추적
+  // 나이스페이 SDK 미리 로드
   useEffect(() => {
     trackViewPricing();
-    // 나이스페이 SDK 미리 로드
-    loadNicepaySDK().catch(console.error);
+    loadNicepaySDK()
+      .then(() => {
+        setSdkReady(true);
+        console.log('나이스페이 SDK 준비 완료');
+      })
+      .catch((err) => {
+        console.error('나이스페이 SDK 로드 실패:', err);
+      });
   }, []);
 
   useEffect(() => {
@@ -131,8 +190,15 @@ function PricingPageContent() {
     });
 
     try {
-      // 1. 나이스페이 SDK 로드
-      await loadNicepaySDK();
+      // 1. 나이스페이 SDK 확인
+      if (!window.AUTHNICE) {
+        console.log('SDK 재로드 시도...');
+        await loadNicepaySDK();
+      }
+
+      if (!window.AUTHNICE) {
+        throw new Error('결제 모듈을 불러올 수 없습니다. 페이지를 새로고침 해주세요.');
+      }
       
       // 2. 결제 생성 (백엔드에 주문 정보 저장)
       const orderId = `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -147,11 +213,17 @@ function PricingPageContent() {
       // 3. 나이스페이 설정 가져오기
       const configResponse = await fetch(`${API_URL}/api/nicepay/config`);
       const config = await configResponse.json();
+      
+      console.log('나이스페이 결제 요청:', {
+        clientId: config.client_id,
+        orderId,
+        amount: plan.price,
+      });
 
       // 4. 나이스페이 결제창 호출
       const returnUrl = `${window.location.origin}/api/nicepay`;
       
-      window.AUTHNICE?.requestPay({
+      window.AUTHNICE.requestPay({
         clientId: config.client_id,
         method: 'card',
         orderId: orderId,
@@ -162,7 +234,7 @@ function PricingPageContent() {
         fnError: (result) => {
           console.error('나이스페이 오류:', result);
           // 사용자 취소는 에러 메시지 표시하지 않음
-          if (!result.errorMsg?.includes('취소')) {
+          if (!result.errorMsg?.includes('취소') && !result.msg?.includes('취소')) {
             toast.error(result.msg || result.errorMsg || '결제 중 오류가 발생했습니다');
           }
           setIsLoading(false);

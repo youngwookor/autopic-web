@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { CreditCard, Coins, Check, X, Zap, Crown, Monitor, Globe, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -18,19 +18,82 @@ const CREDIT_PACKAGES = [
 
 const SUBSCRIPTION_PLANS = [
   { id: 'free', name: 'Free', desc: '무료 체험', price: 0, credits: '5 크레딧 (1회)', features: [{ text: '웹 미리보기', included: true }, { text: 'Standard/Premium', included: true }, { text: '설치형 프로그램', included: false }, { text: '우선 처리', included: false }], buttonText: '무료로 시작', recommended: false },
-  { id: 'starter', name: 'Starter', desc: '정기 구독', price: 29000, annualPrice: 23200, credits: '월 100 크레딧', features: [{ text: '웹 미리보기', included: true }, { text: 'Standard/Premium', included: true }, { text: '우선 처리', included: true }, { text: '설치형 프로그램', included: false }], buttonText: '구독 시작', recommended: true }
+  { id: 'starter', name: 'Starter', desc: '정기 구독', price: 29000, annualPrice: 23200, credits: '월 100 크레딧', features: [{ text: '웹 미리보기', included: true }, { text: 'Standard/Premium', included: true }, { text: '우선 처리', included: true }, { text: '설치형 프로그램', included: false }], buttonText: '준비 중', recommended: true }
 ];
 
-function loadTossPayments(clientKey: string): Promise<any> {
+// 나이스페이 SDK 타입 선언
+declare global {
+  interface Window {
+    AUTHNICE?: {
+      requestPay: (options: {
+        clientId: string;
+        method: string;
+        orderId: string;
+        amount: number;
+        goodsName: string;
+        returnUrl: string;
+        mallReserved?: string;
+        fnError?: (result: { errorMsg: string; msg: string }) => void;
+      }) => void;
+    };
+  }
+}
+
+// 나이스페이 SDK 로드
+function loadNicepaySDK(): Promise<void> {
   return new Promise((resolve, reject) => {
-    if ((window as any).TossPayments) {
-      resolve((window as any).TossPayments(clientKey));
+    if (window.AUTHNICE) {
+      console.log('나이스페이 SDK 이미 로드됨');
+      resolve();
       return;
     }
+
+    const existingScript = document.querySelector('script[src="https://pay.nicepay.co.kr/v1/js/"]');
+    if (existingScript) {
+      const checkInterval = setInterval(() => {
+        if (window.AUTHNICE) {
+          clearInterval(checkInterval);
+          console.log('나이스페이 SDK 로드 완료 (대기 후)');
+          resolve();
+        }
+      }, 100);
+      
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        if (!window.AUTHNICE) {
+          reject(new Error('나이스페이 SDK 로드 타임아웃'));
+        }
+      }, 5000);
+      return;
+    }
+
     const script = document.createElement('script');
-    script.src = 'https://js.tosspayments.com/v2/standard';
-    script.onload = () => resolve((window as any).TossPayments(clientKey));
-    script.onerror = () => reject(new Error('토스페이먼츠 로드 실패'));
+    script.src = 'https://pay.nicepay.co.kr/v1/js/';
+    script.async = true;
+    
+    script.onload = () => {
+      const checkInterval = setInterval(() => {
+        if (window.AUTHNICE) {
+          clearInterval(checkInterval);
+          console.log('나이스페이 SDK 로드 완료');
+          resolve();
+        }
+      }, 50);
+      
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        if (window.AUTHNICE) {
+          resolve();
+        } else {
+          reject(new Error('나이스페이 SDK 초기화 실패'));
+        }
+      }, 3000);
+    };
+    
+    script.onerror = () => {
+      reject(new Error('나이스페이 SDK 로드 실패'));
+    };
+    
     document.head.appendChild(script);
   });
 }
@@ -41,17 +104,28 @@ export default function Pricing() {
   const [pricingMode, setPricingMode] = useState<'subscription' | 'credits'>('credits');
   const [isAnnual, setIsAnnual] = useState(true);
   const [currentSlide, setCurrentSlide] = useState(2);
-  const [subSlide, setSubSlide] = useState(1); // 구독 슬라이드용
+  const [subSlide, setSubSlide] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
   const [webDetailOpen, setWebDetailOpen] = useState(false);
   const [desktopDetailOpen, setDesktopDetailOpen] = useState(false);
-  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
-  const [pendingPlan, setPendingPlan] = useState<string | null>(null);
+  const [sdkReady, setSdkReady] = useState(false);
 
   const formatPrice = (price: number) => new Intl.NumberFormat('ko-KR').format(price);
+  
+  // 나이스페이 SDK 미리 로드
+  useEffect(() => {
+    loadNicepaySDK()
+      .then(() => {
+        setSdkReady(true);
+        console.log('나이스페이 SDK 준비 완료');
+      })
+      .catch((err) => {
+        console.error('나이스페이 SDK 로드 실패:', err);
+      });
+  }, []);
   
   // 크레딧 슬라이드
   const nextSlide = () => setCurrentSlide((prev) => Math.min(prev + 1, CREDIT_PACKAGES.length - 1));
@@ -83,35 +157,70 @@ export default function Pricing() {
       router.push('/login');
       return;
     }
+    
     const plan = CREDIT_PACKAGES.find(p => p.id === planId);
     if (!plan) return;
+    
     setIsLoading(true);
     setSelectedPlan(planId);
+    
     try {
+      // 1. 나이스페이 SDK 확인
+      if (!window.AUTHNICE) {
+        console.log('SDK 재로드 시도...');
+        await loadNicepaySDK();
+      }
+
+      if (!window.AUTHNICE) {
+        throw new Error('결제 모듈을 불러올 수 없습니다. 페이지를 새로고침 해주세요.');
+      }
+      
+      // 2. 결제 생성 (백엔드에 주문 정보 저장)
       const orderId = `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const createResponse = await fetch(`${API_URL}/api/payment/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: user.id, plan: planId, order_id: orderId }),
       });
+      
       if (!createResponse.ok) throw new Error('결제 생성 실패');
-      const configResponse = await fetch(`${API_URL}/api/payment/config`);
+      
+      // 3. 나이스페이 설정 가져오기
+      const configResponse = await fetch(`${API_URL}/api/nicepay/config`);
       const config = await configResponse.json();
-      const tossPayments = await loadTossPayments(config.client_key);
-      await tossPayments.requestPayment('카드', {
+      
+      console.log('나이스페이 결제 요청:', {
+        clientId: config.client_id,
+        orderId,
         amount: plan.price,
-        orderId: orderId,
-        orderName: `Autopic ${plan.name} - ${formatPrice(plan.credits)}크레딧`,
-        customerName: user.name || user.email,
-        successUrl: `${window.location.origin}/pricing/success?plan=${planId}`,
-        failUrl: `${window.location.origin}/pricing/fail`,
       });
+      
+      // 4. 나이스페이 결제창 호출
+      const returnUrl = `${window.location.origin}/api/nicepay`;
+      
+      window.AUTHNICE.requestPay({
+        clientId: config.client_id,
+        method: 'card',
+        orderId: orderId,
+        amount: plan.price,
+        goodsName: `Autopic ${plan.name} - ${formatPrice(plan.credits)}크레딧`,
+        returnUrl: returnUrl,
+        mallReserved: JSON.stringify({ plan: planId, userId: user.id }),
+        fnError: (result) => {
+          console.error('나이스페이 오류:', result);
+          if (!result.errorMsg?.includes('취소') && !result.msg?.includes('취소')) {
+            toast.error(result.msg || result.errorMsg || '결제 중 오류가 발생했습니다');
+          }
+          setIsLoading(false);
+          setSelectedPlan(null);
+        },
+      });
+      
     } catch (error: any) {
-      if (error.code !== 'USER_CANCEL') {
-        toast.error(error.message || '결제 중 오류가 발생했습니다');
-      }
-    } finally {
+      console.error('결제 오류:', error);
+      toast.error(error.message || '결제 중 오류가 발생했습니다');
       setIsLoading(false);
+      setSelectedPlan(null);
     }
   };
 
@@ -127,53 +236,8 @@ export default function Pricing() {
       return;
     }
 
-    // 로그인 체크
-    if (!isAuthenticated || !user) {
-      toast.error('로그인이 필요합니다');
-      router.push('/login');
-      return;
-    }
-
-    // 구독 확인 모달 표시
-    setPendingPlan(plan);
-    setShowSubscribeModal(true);
-  };
-
-  const confirmSubscribe = async () => {
-    if (!pendingPlan || !user) return;
-    
-    setShowSubscribeModal(false);
-    setIsLoading(true);
-    setSelectedPlan(pendingPlan);
-
-    try {
-      // 토스페이먼츠 설정 가져오기
-      const configResponse = await fetch(`${API_URL}/api/billing/config`);
-      const config = await configResponse.json();
-
-      // 토스페이먼츠 SDK 로드 (v2)
-      const tossPayments = await loadTossPayments(config.client_key);
-      const customerKey = user.id;
-
-      // 빌링 위젯 실행
-      const payment = tossPayments.payment({ customerKey });
-
-      await payment.requestBillingAuth({
-        method: 'CARD',
-        successUrl: `${window.location.origin}/pricing/billing-success?plan=${pendingPlan}&isAnnual=${isAnnual}`,
-        failUrl: `${window.location.origin}/pricing/billing-fail`,
-      });
-
-    } catch (error: any) {
-      console.error('구독 결제 오류:', error);
-      if (error.code !== 'USER_CANCEL') {
-        toast.error(error.message || '결제 중 오류가 발생했습니다');
-      }
-    } finally {
-      setIsLoading(false);
-      setSelectedPlan(null);
-      setPendingPlan(null);
-    }
+    // 정기 구독은 나이스페이 심사 완료 후 사용 가능
+    toast('정기 구독 서비스 준비 중입니다', { icon: '🔧' });
   };
 
   return (
@@ -414,14 +478,22 @@ export default function Pricing() {
               )}
             </div>
 
+            {/* 정기구독 준비 중 안내 */}
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 md:p-6 mb-6 text-center">
+              <div className="text-2xl mb-2">🔧</div>
+              <h3 className="font-bold text-amber-800 mb-1">정기 구독 서비스 준비 중</h3>
+              <p className="text-sm text-amber-600">결제 시스템 심사가 진행 중입니다. 곧 서비스가 오픈될 예정입니다.</p>
+              <p className="text-xs text-amber-500 mt-2">크레딧 충전은 지금 바로 이용 가능합니다!</p>
+            </div>
+
             {/* 월간/연간 토글 */}
-            <div className="flex items-center justify-center gap-3 mb-4 md:mb-10">
+            <div className="flex items-center justify-center gap-3 mb-4 md:mb-10 opacity-50">
               <span className={`text-xs font-medium ${!isAnnual ? 'text-zinc-900' : 'text-zinc-400'}`}>월간</span>
               <button onClick={() => setIsAnnual(!isAnnual)} className={`w-10 h-6 rounded-full p-1 transition-colors duration-300 ${isAnnual ? 'bg-[#87D039]' : 'bg-zinc-300'}`}><div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform duration-300 ${isAnnual ? 'translate-x-4' : 'translate-x-0'}`}></div></button>
               <span className={`text-xs font-medium flex items-center gap-1.5 ${isAnnual ? 'text-zinc-900' : 'text-zinc-400'}`}>연간 <span className="text-[#87D039] text-[10px] font-bold">20% 할인</span></span>
             </div>
 
-            {/* 모바일: 슬라이드 형태 - 수정된 버전 */}
+            {/* 모바일: 슬라이드 형태 */}
             <div className="md:hidden relative h-[380px] mb-4" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={() => handleTouchEnd(true)}>
               <div className="absolute inset-0 flex items-center justify-center">
                 {SUBSCRIPTION_PLANS.map((plan, idx) => {
@@ -442,7 +514,7 @@ export default function Pricing() {
                   return (
                     <div key={plan.id} className="absolute w-[260px] transition-all duration-500 ease-out cursor-pointer" style={style} onClick={() => setSubSlide(idx)}>
                       <div className={`p-5 rounded-2xl flex flex-col relative ${plan.recommended && isCenter ? 'bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-2xl' : isCenter ? 'bg-white border-2 border-zinc-900 shadow-2xl' : 'bg-white border border-zinc-200 shadow-lg'}`}>
-                        {plan.recommended && isCenter && <div className="absolute -top-3 left-1/2 -translate-x-1/2"><span className="bg-[#87D039] text-black text-[10px] font-bold px-4 py-1 rounded-full">추천</span></div>}
+                        {plan.recommended && isCenter && <div className="absolute -top-3 left-1/2 -translate-x-1/2"><span className="bg-amber-400 text-black text-[10px] font-bold px-4 py-1 rounded-full">준비 중</span></div>}
                         <div className="text-center mb-3 mt-2">
                           <h3 className="text-lg font-bold mb-1">{plan.name}</h3>
                           <p className={`text-xs ${plan.recommended && isCenter ? 'text-blue-100' : 'text-zinc-500'}`}>{plan.desc}</p>
@@ -462,7 +534,7 @@ export default function Pricing() {
                             ))}
                           </div>
                         </div>
-                        <button onClick={(e) => { e.stopPropagation(); handleSubscribe(plan.id); }} className={`w-full py-2.5 rounded-xl font-bold text-sm transition-all ${plan.recommended && isCenter ? 'bg-white text-blue-600 hover:bg-blue-50' : isCenter ? 'bg-zinc-900 text-white hover:bg-black' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}>{plan.buttonText}</button>
+                        <button onClick={(e) => { e.stopPropagation(); handleSubscribe(plan.id); }} disabled={plan.id !== 'free'} className={`w-full py-2.5 rounded-xl font-bold text-sm transition-all ${plan.recommended && isCenter ? 'bg-white/50 text-blue-600 cursor-not-allowed' : isCenter ? 'bg-zinc-900 text-white hover:bg-black' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}>{plan.buttonText}</button>
                       </div>
                     </div>
                   );
@@ -481,7 +553,7 @@ export default function Pricing() {
                 const displayPrice = isAnnual && plan.annualPrice ? plan.annualPrice : plan.price;
                 return (
                   <div key={plan.id} className={`p-6 md:p-8 rounded-2xl md:rounded-3xl flex flex-col relative ${plan.recommended ? 'bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-2xl' : 'bg-white border-2 border-zinc-200 shadow-lg hover:border-zinc-400 transition-all'}`}>
-                    {plan.recommended && <div className="absolute -top-3 left-1/2 -translate-x-1/2"><span className="bg-[#87D039] text-black text-[10px] font-bold px-4 py-1 rounded-full">추천</span></div>}
+                    {plan.recommended && <div className="absolute -top-3 left-1/2 -translate-x-1/2"><span className="bg-amber-400 text-black text-[10px] font-bold px-4 py-1 rounded-full">준비 중</span></div>}
                     <div className="text-center mb-4 md:mb-6 mt-2">
                       <h3 className="text-lg md:text-xl font-bold mb-1">{plan.name}</h3>
                       <p className={`text-xs md:text-sm ${plan.recommended ? 'text-blue-100' : 'text-zinc-500'}`}>{plan.desc}</p>
@@ -501,7 +573,7 @@ export default function Pricing() {
                         ))}
                       </div>
                     </div>
-                    <button onClick={() => handleSubscribe(plan.id)} className={`w-full py-3 md:py-3.5 rounded-xl font-bold text-sm transition-all ${plan.recommended ? 'bg-white text-blue-600 hover:bg-blue-50' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'}`}>{plan.buttonText}</button>
+                    <button onClick={() => handleSubscribe(plan.id)} disabled={plan.id !== 'free'} className={`w-full py-3 md:py-3.5 rounded-xl font-bold text-sm transition-all ${plan.recommended ? 'bg-white/50 text-blue-600 cursor-not-allowed' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'}`}>{plan.buttonText}</button>
                   </div>
                 );
               })}
@@ -519,106 +591,6 @@ export default function Pricing() {
           <button onClick={() => toast('문의 기능은 준비 중입니다', { icon: '📧' })} className="w-full md:w-auto whitespace-nowrap px-5 py-2.5 bg-zinc-900 text-white rounded-lg font-bold text-sm hover:bg-black transition-colors">문의하기</button>
         </div>
       </div>
-
-      {/* 구독 확인 모달 */}
-      {showSubscribeModal && pendingPlan && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSubscribeModal(false)}>
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 md:p-8" onClick={e => e.stopPropagation()}>
-            <h3 className="text-xl font-bold text-center mb-2">구독 결제 확인</h3>
-            <p className="text-zinc-500 text-center text-sm mb-6">아래 내용을 확인하시고 결제를 진행해주세요</p>
-            
-            {(() => {
-              const plan = SUBSCRIPTION_PLANS.find(p => p.id === pendingPlan);
-              if (!plan) return null;
-              const monthlyPrice = plan.price;
-              const annualPrice = plan.annualPrice || plan.price;
-              const annualTotal = annualPrice * 12;
-              const monthlyTotal = monthlyPrice * 12;
-              const savings = monthlyTotal - annualTotal;
-              
-              return (
-                <div className="space-y-4">
-                  {/* 결제 주기 선택 */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      onClick={() => setIsAnnual(false)}
-                      className={`p-4 rounded-xl border-2 text-left transition-all ${
-                        !isAnnual 
-                          ? 'border-blue-500 bg-blue-50' 
-                          : 'border-zinc-200 hover:border-zinc-300'
-                      }`}
-                    >
-                      <div className="text-xs text-zinc-500 mb-1">월간 결제</div>
-                      <div className="text-lg font-bold">₩{formatPrice(monthlyPrice)}<span className="text-sm font-normal text-zinc-400">/월</span></div>
-                      <div className="text-xs text-zinc-400 mt-1">매월 자동 결제</div>
-                    </button>
-                    <button
-                      onClick={() => setIsAnnual(true)}
-                      className={`p-4 rounded-xl border-2 text-left transition-all relative ${
-                        isAnnual 
-                          ? 'border-blue-500 bg-blue-50' 
-                          : 'border-zinc-200 hover:border-zinc-300'
-                      }`}
-                    >
-                      <div className="absolute -top-2 -right-2 bg-[#87D039] text-black text-[10px] font-bold px-2 py-0.5 rounded-full">20% 할인</div>
-                      <div className="text-xs text-zinc-500 mb-1">연간 결제</div>
-                      <div className="text-lg font-bold">₩{formatPrice(annualPrice)}<span className="text-sm font-normal text-zinc-400">/월</span></div>
-                      <div className="text-xs text-[#87D039] mt-1">₩{formatPrice(savings)} 절약</div>
-                    </button>
-                  </div>
-
-                  {/* 결제 요약 */}
-                  <div className="bg-zinc-50 rounded-xl p-4 space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-zinc-500">플랜</span>
-                      <span className="font-bold">{plan.name}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-zinc-500">결제 주기</span>
-                      <span className="font-bold">{isAnnual ? '연간 (12개월)' : '월간'}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-zinc-500">지급 크레딧</span>
-                      <span className="font-bold text-[#87D039]">100 크레딧/월</span>
-                    </div>
-                    <div className="border-t pt-2 mt-2">
-                      <div className="flex justify-between">
-                        <span className="text-zinc-500">결제 금액</span>
-                        <span className="text-xl font-bold">₩{formatPrice(isAnnual ? annualTotal : monthlyPrice)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 안내 문구 */}
-                  <p className="text-xs text-zinc-400 text-center">
-                    {isAnnual 
-                      ? '연간 결제는 20% 할인된 가격으로 1년간 구독하며, 매월 100 크레딧이 지급됩니다. 미사용 크레딧은 다음 달 소멸됩니다.'
-                      : '월간 결제는 매월 100 크레딧이 지급되며, 미사용 크레딧은 다음 달 소멸됩니다. 언제든 취소 가능합니다.'
-                    }
-                  </p>
-
-                  {/* 버튼 */}
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setShowSubscribeModal(false)}
-                      className="flex-1 py-3 rounded-xl font-bold text-sm bg-zinc-100 text-zinc-700 hover:bg-zinc-200 transition-all"
-                    >
-                      취소
-                    </button>
-                    <button
-                      onClick={confirmSubscribe}
-                      disabled={isLoading}
-                      className="flex-1 py-3 rounded-xl font-bold text-sm bg-blue-600 text-white hover:bg-blue-700 transition-all disabled:opacity-50"
-                    >
-                      {isLoading ? '처리 중...' : '결제하기'}
-                    </button>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-      )}
     </section>
   );
 }
