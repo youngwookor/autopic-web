@@ -21,15 +21,18 @@ import {
   Package,
   X,
   Share2,
-  Link2,
   RefreshCw,
   ZoomIn,
   ZoomOut,
   Video,
   RotateCw,
   Play,
+  Pause,
   CheckCircle,
   AlertCircle,
+  Maximize2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -45,25 +48,82 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 // 알림음 재생 함수
 const playNotificationSound = () => {
   try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
     
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
     
-    // 성공 알림음 (도-미-솔 화음)
-    oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
-    oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1); // E5
-    oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.2); // G5
+    oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime);
+    oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1);
+    oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.2);
     
     gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
     
     oscillator.start(audioContext.currentTime);
     oscillator.stop(audioContext.currentTime + 0.5);
-  } catch (e) {
+  } catch {
     console.log('Audio not supported');
+  }
+};
+
+// 브라우저 푸시 알림 함수
+const sendPushNotification = (title: string, body: string) => {
+  if (!('Notification' in window)) return;
+  
+  if (Notification.permission === 'granted') {
+    new Notification(title, {
+      body,
+      icon: '/icons/icon-192x192.png',
+      tag: 'autopic-video',
+    });
+  } else if (Notification.permission !== 'denied') {
+    Notification.requestPermission().then(permission => {
+      if (permission === 'granted') {
+        new Notification(title, {
+          body,
+          icon: '/icons/icon-192x192.png',
+          tag: 'autopic-video',
+        });
+      }
+    });
+  }
+};
+
+// 타이틀 깜빡임 함수
+let titleBlinkInterval: NodeJS.Timeout | null = null;
+const originalTitle = 'AUTOPIC - AI 상품 이미지 생성';
+
+const startTitleBlink = (message: string) => {
+  if (titleBlinkInterval) return;
+  
+  let isOriginal = true;
+  titleBlinkInterval = setInterval(() => {
+    document.title = isOriginal ? message : originalTitle;
+    isOriginal = !isOriginal;
+  }, 1000);
+  
+  // 10초 후 자동 중지
+  setTimeout(() => {
+    stopTitleBlink();
+  }, 10000);
+};
+
+const stopTitleBlink = () => {
+  if (titleBlinkInterval) {
+    clearInterval(titleBlinkInterval);
+    titleBlinkInterval = null;
+    document.title = originalTitle;
+  }
+};
+
+// 진동 함수 (모바일)
+const triggerVibration = () => {
+  if ('vibrate' in navigator) {
+    // 짧은 진동 패턴: 200ms 진동, 100ms 멈춤, 200ms 진동
+    navigator.vibrate([200, 100, 200]);
   }
 };
 
@@ -89,6 +149,9 @@ export default function Studio() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   
+  // 모바일 결과 섹션 펼침 상태
+  const [isResultExpanded, setIsResultExpanded] = useState(false);
+  
   // Pull to Refresh
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
@@ -102,25 +165,24 @@ export default function Studio() {
   const initialDistance = useRef(0);
   const zoomImageRef = useRef<HTMLDivElement>(null);
 
-  // 공유 메뉴
-  const [showShareMenu, setShowShareMenu] = useState(false);
 
   // 360° 비디오 관련 상태
   const VIDEO_CREDITS = 30;
   const [showVideoModal, setShowVideoModal] = useState(false);
-  const [videoGenerating, setVideoGenerating] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
   const [videoId, setVideoId] = useState<string | null>(null);
   const [videoStatus, setVideoStatus] = useState<'idle' | 'pending' | 'processing' | 'completed' | 'failed'>('idle');
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   
   // 샘플 비디오 모달
   const [showSampleModal, setShowSampleModal] = useState(false);
   
-  // 생성된 비디오 뷰어 모달
-  const [showVideoViewer, setShowVideoViewer] = useState(false);
+  // 인라인 비디오 플레이어 상태
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [showVideoFullscreen, setShowVideoFullscreen] = useState(false);
+  const [isVideoSharing, setIsVideoSharing] = useState(false);
+  const videoPlayerRef = useRef<HTMLVideoElement>(null);
 
   // Portal용 mounted 상태 (SSR 대응)
   const [mounted, setMounted] = useState(false);
@@ -134,6 +196,9 @@ export default function Studio() {
   const requiredCredits = MODEL_CONFIG[modelType].credits;
   const credits = balance?.credits || 0;
 
+  // 결과가 있는지 확인
+  const hasResults = generatedImages.length > 0 || isGenerating;
+
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
@@ -145,6 +210,13 @@ export default function Studio() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // 이미지 생성 시 결과 섹션 자동 펼침
+  useEffect(() => {
+    if (isGenerating || generatedImages.length > 0) {
+      setIsResultExpanded(true);
+    }
+  }, [isGenerating, generatedImages.length]);
 
   // Pull to Refresh 핸들러
   const handleTouchStart = useCallback((e: TouchEvent) => {
@@ -180,8 +252,8 @@ export default function Studio() {
           setBalance(profile.credits || 0);
           toast.success('크레딧 정보가 갱신되었습니다');
         }
-      } catch (e) {
-        console.error('Refresh error:', e);
+      } catch (err) {
+        console.error('Refresh error:', err);
       } finally {
         setIsRefreshing(false);
       }
@@ -227,12 +299,10 @@ export default function Studio() {
       setZoomLevel(newZoom);
       initialDistance.current = currentDistance;
 
-      // 줌 중심점 계산
-      const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-      const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-      
       if (zoomImageRef.current) {
         const rect = zoomImageRef.current.getBoundingClientRect();
+        const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
         setZoomPosition({
           x: (centerX - rect.left - rect.width / 2) * (1 - newZoom),
           y: (centerY - rect.top - rect.height / 2) * (1 - newZoom)
@@ -340,7 +410,12 @@ export default function Studio() {
 
     setIsGenerating(true);
     setGeneratedImages([]);
+    setIsResultExpanded(true);
     resetZoom();
+
+    // 비디오 상태 초기화
+    setVideoStatus('idle');
+    setVideoId(null);
 
     if (isMobile && resultSectionRef.current) {
       setTimeout(() => {
@@ -382,10 +457,8 @@ export default function Studio() {
       setSelectedImageIndex(0);
       setBalance(data.remaining_credits);
       
-      // 생성 완료 알림음 재생
       playNotificationSound();
       
-      // Analytics: 이미지 생성 추적
       trackImageGenerate({
         productType: target,
         imageType: subject === 'product' ? '정물' : '인물',
@@ -406,9 +479,10 @@ export default function Studio() {
         }, 100);
       }
       
-    } catch (error: any) {
-      console.error('Generation error:', error);
-      toast.error(error.message || '이미지 생성 실패. 다시 시도해주세요.');
+    } catch (err) {
+      console.error('Generation error:', err);
+      const errorMessage = err instanceof Error ? err.message : '이미지 생성 실패. 다시 시도해주세요.';
+      toast.error(errorMessage);
     } finally {
       setIsGenerating(false);
     }
@@ -454,14 +528,13 @@ export default function Studio() {
       URL.revokeObjectURL(url);
       
       toast.success('전체 이미지 다운로드 완료!');
-    } catch (error) {
+    } catch {
       toast.error('다운로드 실패. 다시 시도해주세요.');
     } finally {
       setIsDownloading(false);
     }
   };
 
-  // base64를 Blob으로 변환하는 헬퍼 함수
   const base64ToBlob = (base64: string, mimeType: string = 'image/jpeg'): Blob => {
     const base64Data = base64.split(',')[1];
     const byteCharacters = atob(base64Data);
@@ -473,82 +546,50 @@ export default function Studio() {
     return new Blob([byteArray], { type: mimeType });
   };
 
-  // 공유 기능 - PC/모바일 분리 처리
-  const handleShare = async (type: 'link' | 'kakao') => {
+  // 이미지 공유 - PC: 클립보드 복사 / 모바일: 파일 직접 공유
+  const handleImageShare = async () => {
     const image = generatedImages[selectedImageIndex];
     if (!image) return;
 
-    // 모바일 감지
     const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
-    if (type === 'link') {
-      // 이미지 복사하기
-      try {
-        const blob = base64ToBlob(image, 'image/png');
-        
+    try {
+      const blob = base64ToBlob(image, 'image/png');
+      
+      if (isMobileDevice && navigator.share) {
+        // 모바일: 파일 직접 공유
+        const file = new File([blob], `autopic_image_${Date.now()}.png`, { type: 'image/png' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: 'AUTOPIC - AI 상품 이미지',
+            text: 'AI로 생성한 고품질 상품 이미지',
+          });
+        } else {
+          await navigator.share({
+            title: 'AUTOPIC - AI 상품 이미지',
+            text: 'AI로 생성한 고품질 상품 이미지를 확인해보세요!',
+            url: 'https://autopic.kr',
+          });
+        }
+      } else {
+        // PC: 클립보드에 이미지 복사
         if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
-          // PNG로 복사 (호환성을 위해)
           const pngBlob = new Blob([blob], { type: 'image/png' });
           await navigator.clipboard.write([
             new ClipboardItem({ 'image/png': pngBlob })
           ]);
           toast.success('이미지가 클립보드에 복사되었습니다!');
         } else {
-          // 클립보드 API 미지원 시 다운로드로 안내
-          toast.error('이 브라우저에서는 이미지 복사를 지원하지 않습니다. 다운로드를 이용해주세요.');
+          toast.error('이 브라우저에서는 이미지 복사를 지원하지 않습니다.');
         }
-      } catch (e) {
-        console.error('Image copy error:', e);
-        toast.error('이미지 복사에 실패했습니다. 다운로드를 이용해주세요.');
       }
-    } else if (type === 'kakao') {
-      // 이미지 공유하기
-      const blob = base64ToBlob(image, 'image/jpeg');
-      const file = new File([blob], `autopic_image_${Date.now()}.jpg`, { type: 'image/jpeg' });
-      
-      if (isMobileDevice && navigator.share) {
-        // 모바일: Web Share API 사용
-        try {
-          if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({
-              title: 'AUTOPIC - AI 상품 이미지',
-              text: 'AI로 생성한 고품질 상품 이미지를 확인해보세요!',
-              files: [file]
-            });
-          } else {
-            // 파일 공유 미지원 시 URL 공유
-            await navigator.share({
-              title: 'AUTOPIC - AI 상품 이미지',
-              text: 'AI로 생성한 고품질 상품 이미지를 확인해보세요!',
-              url: window.location.origin
-            });
-          }
-        } catch (e) {
-          if ((e as Error).name !== 'AbortError') {
-            console.error('Share error:', e);
-            toast.error('공유에 실패했습니다');
-          }
-        }
-      } else {
-        // PC: 이미지 다운로드로 대체
-        try {
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = `autopic_image_${Date.now()}.jpg`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-          toast.success('이미지 다운로드 완료! SNS에 직접 업로드해주세요.');
-        } catch (e) {
-          console.error('Download error:', e);
-          toast.error('다운로드에 실패했습니다');
-        }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        console.error('Image share error:', err);
+        toast.error('공유에 실패했습니다.');
       }
     }
-    
-    setShowShareMenu(false);
   };
 
   // 360° 비디오 생성 시작
@@ -568,14 +609,17 @@ export default function Studio() {
       return;
     }
 
-    setVideoGenerating(true);
+    // 알림 권한 미리 요청 (비디오 생성 완료 시 알림을 위해)
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
     setVideoProgress(0);
     setVideoStatus('pending');
     setVideoError(null);
     setShowVideoModal(false);
 
     try {
-      // base64 데이터만 추출 (data:image/jpeg;base64, 제거)
       const imageData = generatedImages.map(img => img.split(',')[1]);
       
       const response = await fetch(`${API_URL}/api/video/generate`, {
@@ -593,7 +637,6 @@ export default function Studio() {
         setVideoId(data.video_id);
         toast.success('비디오 생성이 시작되었습니다!');
         
-        // 크레딧 갱신
         const { data: profile } = await supabase
           .from('profiles')
           .select('credits')
@@ -601,24 +644,21 @@ export default function Studio() {
           .single();
         if (profile) setBalance(profile.credits || 0);
         
-        // 폴링 시작
         startVideoPolling(data.video_id);
       } else {
         setVideoStatus('failed');
         setVideoError(data.error || '비디오 생성 시작 실패');
         toast.error(data.error || '비디오 생성 시작 실패');
-        setVideoGenerating(false);
       }
-    } catch (err: any) {
+    } catch (err) {
       setVideoStatus('failed');
-      setVideoError(err.message || '비디오 생성 중 오류 발생');
+      const errorMessage = err instanceof Error ? err.message : '비디오 생성 중 오류 발생';
+      setVideoError(errorMessage);
       toast.error('비디오 생성 중 오류가 발생했습니다');
-      setVideoGenerating(false);
     }
   };
 
-  // 비디오 상태 폴링
-  const startVideoPolling = (vidId: string) => {
+  const startVideoPolling = useCallback((vidId: string) => {
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
     }
@@ -629,22 +669,24 @@ export default function Studio() {
         const data = await response.json();
         
         if (data.success) {
-          const { status, progress, video_url, error_message } = data;
+          const { status, progress, error_message } = data;
           
           setVideoStatus(status);
           setVideoProgress(progress || 0);
           
           if (status === 'completed') {
-            setVideoUrl(video_url);
-            setVideoGenerating(false);
+            // 알림 기능들 실행
             playNotificationSound();
+            sendPushNotification('AUTOPIC', '🎉 360° 비디오 생성 완료!');
+            startTitleBlink('🎉 비디오 완성!');
+            triggerVibration();
+            
             toast.success('360° 비디오 생성 완료!');
             if (pollingRef.current) {
               clearInterval(pollingRef.current);
             }
           } else if (status === 'failed') {
             setVideoError(error_message || '비디오 생성 실패');
-            setVideoGenerating(false);
             toast.error('비디오 생성에 실패했습니다');
             if (pollingRef.current) {
               clearInterval(pollingRef.current);
@@ -654,18 +696,100 @@ export default function Studio() {
       } catch (err) {
         console.error('폴링 오류:', err);
       }
-    }, 5000); // 5초마다 체크
-  };
+    }, 5000);
+  }, []);
 
-  // 비디오 다운로드
-  const handleVideoDownload = () => {
-    if (videoId) {
-      window.open(`${API_URL}/api/video/download/${videoId}`, '_blank');
-      toast.success('비디오 다운로드 시작!');
+  // 비디오 다운로드 - fetch로 가져와서 다운로드 (보안 경고 해결)
+  const handleVideoDownload = async () => {
+    if (!videoId) return;
+    
+    const downloadToast = toast.loading('비디오 다운로드 준비 중...');
+    
+    try {
+      const response = await fetch(`${API_URL}/api/video/download/${videoId}`);
+      if (!response.ok) throw new Error('다운로드 실패');
+      
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `autopic_360_${videoId.slice(0, 8)}.mp4`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast.success('비디오 다운로드 완료!', { id: downloadToast });
+    } catch (err) {
+      console.error('Download error:', err);
+      toast.error('다운로드 실패. 다시 시도해주세요.', { id: downloadToast });
     }
   };
 
-  // 폴링 정리
+  // 비디오 플레이어 제어
+  const toggleVideoPlay = () => {
+    if (videoPlayerRef.current) {
+      if (isVideoPlaying) {
+        videoPlayerRef.current.pause();
+      } else {
+        videoPlayerRef.current.play();
+      }
+      setIsVideoPlaying(!isVideoPlaying);
+    }
+  };
+
+  // 비디오 공유 - PC: URL 클립보드 복사 / 모바일: 파일 직접 공유
+  const handleVideoShare = async () => {
+    if (!videoId) return;
+    
+    const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const videoShareUrl = `https://autopic.kr/video/${videoId}`;
+    
+    setIsVideoSharing(true);
+    
+    try {
+      if (isMobileDevice && navigator.share) {
+        // 모바일: 비디오 파일 직접 공유 시도
+        try {
+          const response = await fetch(`${API_URL}/api/video/download/${videoId}`);
+          if (response.ok) {
+            const blob = await response.blob();
+            const file = new File([blob], `autopic_360_${videoId.slice(0, 8)}.mp4`, { type: 'video/mp4' });
+            
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+              await navigator.share({
+                files: [file],
+                title: 'AUTOPIC 360° 비디오',
+                text: 'AI로 생성한 360° 상품 회전 비디오',
+              });
+              return;
+            }
+          }
+        } catch {
+          // 파일 공유 실패 시 URL 공유로 폴백
+        }
+        
+        // URL 공유
+        await navigator.share({
+          title: 'AUTOPIC 360° 비디오',
+          text: 'AI로 생성한 360° 상품 회전 비디오를 확인해보세요!',
+          url: videoShareUrl,
+        });
+      } else {
+        // PC: URL 클립보드 복사
+        await navigator.clipboard.writeText(videoShareUrl);
+        toast.success('비디오 링크가 클립보드에 복사되었습니다!');
+      }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        console.error('Video share error:', err);
+        toast.error('공유에 실패했습니다.');
+      }
+    } finally {
+      setIsVideoSharing(false);
+    }
+  };
+
   useEffect(() => {
     return () => {
       if (pollingRef.current) {
@@ -674,9 +798,8 @@ export default function Studio() {
     };
   }, []);
 
-  // 모달 열림 시 스크롤 방지
   useEffect(() => {
-    if (showVideoModal || showSampleModal || showVideoViewer || isModalOpen) {
+    if (showVideoModal || showSampleModal || showVideoFullscreen || isModalOpen) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
@@ -684,32 +807,47 @@ export default function Studio() {
     return () => {
       document.body.style.overflow = 'unset';
     };
-  }, [showVideoModal, showSampleModal, showVideoViewer, isModalOpen]);
+  }, [showVideoModal, showSampleModal, showVideoFullscreen, isModalOpen]);
 
-  const goToPrevImage = () => {
+  const goToPrevImage = useCallback(() => {
     setSelectedImageIndex((prev) => (prev === 0 ? generatedImages.length - 1 : prev - 1));
     resetZoom();
-  };
+  }, [generatedImages.length]);
 
-  const goToNextImage = () => {
+  const goToNextImage = useCallback(() => {
     setSelectedImageIndex((prev) => (prev === generatedImages.length - 1 ? 0 : prev + 1));
     resetZoom();
-  };
+  }, [generatedImages.length]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (generatedImages.length === 0) return;
       if (e.key === 'ArrowLeft') goToPrevImage();
       if (e.key === 'ArrowRight') goToNextImage();
-      if (e.key === 'Escape') setIsModalOpen(false);
+      if (e.key === 'Escape') {
+        setIsModalOpen(false);
+        setShowVideoFullscreen(false);
+      }
     };
+    
+    // 페이지에 포커스가 돌아오면 타이틀 깜빡임 중지
+    const handleFocus = () => {
+      stopTitleBlink();
+    };
+    
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [generatedImages.length]);
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [generatedImages.length, goToPrevImage, goToNextImage]);
 
-  // PC에서는 클릭 확대 비활성화 (모바일은 핀치줌 사용)
   const handleImageClick = () => {
-    // 모바일은 핀치줌 사용, PC는 확대 없음
+    if (!isMobile && generatedImages.length > 0) {
+      setIsModalOpen(true);
+    }
   };
 
   return (
@@ -925,7 +1063,6 @@ export default function Studio() {
                         <span>식품</span>
                       </button>
                     </div>
-                    {/* 식품 + 인물 조합 경고 */}
                     {target === 'food' && subject === 'model' && (
                       <p className="text-[10px] text-orange-600 mt-1.5 bg-orange-50 px-2 py-1 rounded">
                         ⚠️ 식품은 정물 모드에 최적화되어 있습니다
@@ -952,346 +1089,406 @@ export default function Studio() {
                 </div>
               </div>
 
-              {/* Right: Preview */}
-              <div ref={resultSectionRef} className="p-4 md:p-6 lg:p-7 bg-white flex flex-col">
-                <div className="flex items-center justify-between mb-3 md:mb-4">
-                  <h3 className="text-sm md:text-base font-bold text-zinc-900">생성 결과</h3>
-                  {generatedImages.length > 0 && (
+              {/* Right: Preview - 모바일 최적화 */}
+              <div ref={resultSectionRef} className="bg-white flex flex-col lg:min-h-full">
+                {/* 모바일: 결과 없을 때 접힌 상태 */}
+                {isMobile && !hasResults && (
+                  <button
+                    onClick={() => setIsResultExpanded(!isResultExpanded)}
+                    className="flex items-center justify-between p-4 border-t border-zinc-100"
+                  >
                     <div className="flex items-center gap-2">
-                      {/* 공유 버튼 */}
-                      <div className="relative">
+                      <ImageIcon size={16} className="text-zinc-400" />
+                      <span className="text-sm font-medium text-zinc-500">생성 결과</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-zinc-400">
+                      <span className="text-xs">이미지 생성 후 표시됩니다</span>
+                      {isResultExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </div>
+                  </button>
+                )}
+
+                {/* 결과 영역 - 모바일에서 조건부 표시 */}
+                <div className={`p-4 md:p-6 lg:p-7 flex flex-col flex-1 ${
+                  isMobile && !hasResults && !isResultExpanded ? 'hidden' : ''
+                }`}>
+                  {/* 헤더 */}
+                  <div className="flex items-center justify-between mb-3 md:mb-4">
+                    <h3 className="text-sm md:text-base font-bold text-zinc-900">생성 결과</h3>
+                    {generatedImages.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        {/* 공유 버튼 - 클릭 시 바로 동작 */}
                         <button 
-                          onClick={() => setShowShareMenu(!showShareMenu)}
+                          onClick={handleImageShare}
                           className="flex items-center gap-1.5 text-xs font-medium text-zinc-600 bg-zinc-100 px-3 py-1.5 rounded-full hover:bg-zinc-200 transition-colors"
                         >
                           <Share2 size={12} />
                           공유
                         </button>
-                        
-                        {/* 공유 메뉴 드롭다운 */}
-                        {showShareMenu && (
-                          <>
-                            <div 
-                              className="fixed inset-0 z-10" 
-                              onClick={() => setShowShareMenu(false)}
-                            />
-                            <div className="absolute right-0 top-full mt-2 bg-white rounded-xl shadow-lg border border-zinc-200 py-2 z-20 min-w-[160px]">
-                              <button
-                                onClick={() => handleShare('link')}
-                                className="flex items-center gap-3 w-full px-4 py-2.5 text-sm hover:bg-zinc-50 transition"
-                              >
-                                <Link2 size={16} className="text-zinc-500" />
-                                이미지 복사
-                              </button>
-                              <button
-                                onClick={() => handleShare('kakao')}
-                                className="flex items-center gap-3 w-full px-4 py-2.5 text-sm hover:bg-zinc-50 transition"
-                              >
-                                <Share2 size={16} className="text-zinc-500" />
-                                {isMobile ? '공유하기' : 'SNS 공유용 다운'}
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
 
-                      {/* 다운로드 버튼 */}
-                      <button 
-                        onClick={() => handleDownload()}
-                        className="flex md:hidden items-center gap-1.5 text-xs font-medium text-black bg-[#87D039] px-3 py-1.5 rounded-full hover:bg-[#9AE045] transition-colors"
-                      >
-                        <Download size={12} />
-                        다운로드
-                      </button>
-                      <button 
-                        onClick={handleDownloadAll}
-                        disabled={isDownloading}
-                        className="hidden md:flex items-center gap-2 text-sm font-medium text-black bg-[#87D039] px-4 py-2 rounded-full hover:bg-[#9AE045] transition-colors disabled:opacity-50"
-                      >
-                        {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Package size={14} />}
-                        {isDownloading ? '압축 중...' : '전체 다운로드'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex-1 flex flex-col min-h-[280px] md:min-h-[350px]">
-                  {isGenerating ? (
-                    <div className="flex-1 flex items-center justify-center">
-                      <div className="text-center">
-                        <Loader2 className="animate-spin mx-auto mb-3 md:mb-4 text-[#87D039]" size={40} />
-                        <h4 className="text-base md:text-lg font-bold mb-1 md:mb-2">이미지 생성 중</h4>
-                        <p className="text-zinc-500 text-xs md:text-sm">AI가 열심히 작업하고 있습니다...</p>
-                        <p className="text-zinc-400 text-xs mt-2">약 30초~1분 소요</p>
-                      </div>
-                    </div>
-                  ) : generatedImages.length > 0 ? (
-                    <>
-                      {/* 메인 이미지 - 핀치 줌 지원 */}
-                      <div 
-                        ref={zoomImageRef}
-                        className={`relative flex-1 flex items-center justify-center mb-3 md:mb-4 bg-zinc-50 rounded-xl md:rounded-2xl p-3 md:p-4 min-h-[200px] md:min-h-[280px] overflow-hidden ${!isMobile ? 'cursor-pointer' : ''}`}
-                        onMouseEnter={() => !isMobile && setIsHovered(true)}
-                        onMouseLeave={() => !isMobile && setIsHovered(false)}
-                        onClick={handleImageClick}
-                        onTouchStart={(e) => {
-                          if (isMobile) {
-                            if (e.touches.length === 2) {
-                              handlePinchStart(e);
-                            } else if (e.touches.length === 1 && zoomLevel === 1) {
-                              (e.currentTarget as any).touchStartX = e.touches[0].clientX;
-                            }
-                          }
-                        }}
-                        onTouchMove={(e) => {
-                          if (isMobile && e.touches.length === 2) {
-                            handlePinchMove(e);
-                          }
-                        }}
-                        onTouchEnd={(e) => {
-                          if (isMobile) {
-                            if (isZooming) {
-                              handlePinchEnd();
-                            } else if (zoomLevel === 1) {
-                              const diff = (e.currentTarget as any).touchStartX - e.changedTouches[0].clientX;
-                              if (Math.abs(diff) > 50) {
-                                if (diff > 0) goToNextImage();
-                                else goToPrevImage();
-                              }
-                            }
-                          }
-                        }}
-                      >
-                        {/* 줌 컨트롤 (모바일) */}
-                        {isMobile && generatedImages.length > 0 && (
-                          <div className="absolute top-2 right-2 flex gap-1 z-20">
-                            {zoomLevel > 1 && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); resetZoom(); }}
-                                className="bg-black/50 text-white p-1.5 rounded-full"
-                              >
-                                <ZoomOut size={16} />
-                              </button>
-                            )}
-                          </div>
-                        )}
-
-                        {/* 줌 힌트 */}
-                        {isMobile && zoomLevel === 1 && generatedImages.length > 0 && (
-                          <div className="absolute top-2 left-2 bg-black/50 text-white text-[10px] px-2 py-1 rounded-full z-10 flex items-center gap-1">
-                            <ZoomIn size={10} />
-                            두 손가락으로 확대
-                          </div>
-                        )}
-
-                        {generatedImages.length > 1 && zoomLevel === 1 && (
-                          <>
-                            <button 
-                              className={`absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 p-2 rounded-full transition z-10 ${isHovered ? 'opacity-100' : 'md:opacity-0 opacity-70'}`}
-                              onClick={(e) => { e.stopPropagation(); goToPrevImage(); }}
-                            >
-                              <ChevronLeft size={20} className="text-white" />
-                            </button>
-                            <button 
-                              className={`absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 p-2 rounded-full transition z-10 ${isHovered ? 'opacity-100' : 'md:opacity-0 opacity-70'}`}
-                              onClick={(e) => { e.stopPropagation(); goToNextImage(); }}
-                            >
-                              <ChevronRight size={20} className="text-white" />
-                            </button>
-                          </>
-                        )}
-                        
-                        {generatedImages.length > 1 && zoomLevel === 1 && (
-                          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
-                            {generatedImages.map((_, idx) => (
-                              <button
-                                key={idx}
-                                onClick={(e) => { e.stopPropagation(); setSelectedImageIndex(idx); }}
-                                className={`w-2 h-2 rounded-full transition ${idx === selectedImageIndex ? 'bg-[#87D039]' : 'bg-zinc-300'}`}
-                              />
-                            ))}
-                          </div>
-                        )}
-
-                        <img 
-                          src={generatedImages[selectedImageIndex]} 
-                          alt={`Generated ${selectedImageIndex + 1}`} 
-                          className="max-w-full max-h-[250px] md:max-h-[320px] rounded-lg md:rounded-xl shadow-lg object-contain transition-transform duration-200"
-                          style={{
-                            transform: `scale(${zoomLevel}) translate(${zoomPosition.x / zoomLevel}px, ${zoomPosition.y / zoomLevel}px)`,
-                          }}
-                          draggable={false}
-                        />
-
-                        {isHovered && !isMobile && (
-                          <div className="absolute top-3 right-3 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full">
-                            클릭하여 전체화면
-                          </div>
-                        )}
-                      </div>
-                      
-                      <div className="grid grid-cols-4 gap-2 md:gap-3">
-                        {generatedImages.map((img, index) => (
-                          <div 
-                            key={index}
-                            onClick={() => { setSelectedImageIndex(index); resetZoom(); }}
-                            className={`relative aspect-square rounded-lg md:rounded-xl overflow-hidden cursor-pointer transition-all ${selectedImageIndex === index ? 'ring-2 md:ring-3 ring-[#87D039] shadow-lg' : 'ring-1 ring-zinc-200 hover:ring-zinc-400'}`}
-                          >
-                            <img src={img} alt={`Thumbnail ${index + 1}`} className="w-full h-full object-cover" />
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); handleDownload(index); }}
-                              className="absolute bottom-1 right-1 bg-black/70 text-white p-1.5 rounded-lg hover:bg-black transition-colors hidden md:block"
-                            >
-                              <Download size={12} />
-                            </button>
-                            <span className="absolute top-1 left-1 bg-black/70 text-white text-[8px] md:text-[10px] font-bold px-1.5 md:px-2 py-0.5 rounded">
-                              {index + 1}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex-1 flex items-center justify-center">
-                      <div className="text-center">
-                        <div className="w-14 h-14 md:w-16 md:h-16 bg-zinc-100 rounded-full flex items-center justify-center mx-auto mb-3 md:mb-4">
-                          <ImageIcon size={24} className="text-zinc-300 md:w-7 md:h-7" />
-                        </div>
-                        <p className="text-zinc-400 font-medium text-sm md:text-base">사진을 업로드하고<br/>생성 버튼을 눌러주세요</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                
-                {/* 360° 비디오 섹션 - 항상 보임 */}
-                <div className={`mt-4 md:mt-5 relative overflow-hidden ${generatedImages.length === 0 ? 'opacity-80' : ''}`}>
-                  {/* 배경 그라데이션 */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 rounded-xl md:rounded-2xl" />
-                  
-                  <div className="relative p-4 md:p-5">
-                    {/* 상단: 타이틀 + 샘플 버튼 */}
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                          <RotateCw size={20} className="text-white md:w-6 md:h-6 animate-spin" style={{animationDuration: '3s'}} />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-sm md:text-base font-bold text-white">360° 회전 비디오</h4>
-                            <span className="px-2 py-0.5 bg-yellow-400 text-yellow-900 text-[9px] md:text-[10px] font-bold rounded-full">NEW</span>
-                          </div>
-                          <p className="text-white/70 text-[10px] md:text-xs mt-0.5">
-                            {generatedImages.length === 0 
-                              ? '먼저 이미지 4장을 생성하면 360° 비디오를 만들 수 있어요'
-                              : 'AI가 4장의 이미지를 합성하여 360° 회전 영상을 만듭니다'
-                            }
-                          </p>
-                        </div>
-                      </div>
-                      
-                      {/* 샘플 보기 버튼 */}
-                      <button
-                        onClick={() => setShowSampleModal(true)}
-                        className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white rounded-lg text-[10px] md:text-xs font-medium transition-colors"
-                      >
-                        <Play size={12} className="md:w-3.5 md:h-3.5" /> 샘플 보기
-                      </button>
-                    </div>
-                    
-                    {/* 비디오 생성 상태에 따른 UI */}
-                    {videoStatus === 'idle' && (
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <button
-                          onClick={() => {
-                            if (generatedImages.length < 4) {
-                              toast.error('먼저 이미지 4장을 생성해주세요');
-                              return;
-                            }
-                            setShowVideoModal(true);
-                          }}
-                          className={`flex-1 py-2.5 md:py-3 rounded-lg md:rounded-xl text-xs md:text-sm font-bold transition-colors flex items-center justify-center gap-2 ${
-                            generatedImages.length >= 4
-                              ? 'bg-white text-purple-600 hover:bg-white/90'
-                              : 'bg-white/30 text-white/80 cursor-pointer'
-                          }`}
+                        <button 
+                          onClick={() => handleDownload()}
+                          className="flex md:hidden items-center gap-1.5 text-xs font-medium text-black bg-[#87D039] px-3 py-1.5 rounded-full hover:bg-[#9AE045] transition-colors"
                         >
-                          <Video size={14} className="md:w-4 md:h-4" />
-                          {generatedImages.length >= 4 
-                            ? `비디오 만들기 (${VIDEO_CREDITS}크레딧)`
-                            : `이미지 생성 후 사용 가능 (${VIDEO_CREDITS}크레딧)`
-                          }
+                          <Download size={12} />
+                          다운로드
+                        </button>
+                        <button 
+                          onClick={handleDownloadAll}
+                          disabled={isDownloading}
+                          className="hidden md:flex items-center gap-2 text-sm font-medium text-black bg-[#87D039] px-4 py-2 rounded-full hover:bg-[#9AE045] transition-colors disabled:opacity-50"
+                        >
+                          {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Package size={14} />}
+                          {isDownloading ? '압축 중...' : '전체 다운로드'}
                         </button>
                       </div>
                     )}
-                    
-                    {(videoStatus === 'pending' || videoStatus === 'processing') && (
-                      <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <Loader2 size={16} className="animate-spin text-white" />
-                            <span className="text-white text-xs md:text-sm font-bold">비디오 생성 중...</span>
-                          </div>
-                          <span className="text-white/80 text-xs font-bold">{videoProgress}%</span>
+                  </div>
+
+                  <div className={`flex-1 flex flex-col ${hasResults ? 'min-h-[280px] md:min-h-[350px]' : 'min-h-[120px] md:min-h-[350px]'}`}>
+                    {isGenerating ? (
+                      <div className="flex-1 flex items-center justify-center">
+                        <div className="text-center">
+                          <Loader2 className="animate-spin mx-auto mb-3 md:mb-4 text-[#87D039]" size={40} />
+                          <h4 className="text-base md:text-lg font-bold mb-1 md:mb-2">이미지 생성 중</h4>
+                          <p className="text-zinc-500 text-xs md:text-sm">AI가 열심히 작업하고 있습니다...</p>
+                          <p className="text-zinc-400 text-xs mt-2">약 30초~1분 소요</p>
                         </div>
-                        <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-white transition-all duration-500 ease-out" 
-                            style={{width: `${videoProgress}%`}}
+                      </div>
+                    ) : generatedImages.length > 0 ? (
+                      <>
+                        {/* 메인 이미지 */}
+                        <div 
+                          ref={zoomImageRef}
+                          className={`relative flex-1 flex items-center justify-center mb-3 md:mb-4 bg-zinc-50 rounded-xl md:rounded-2xl p-3 md:p-4 min-h-[200px] md:min-h-[280px] overflow-hidden ${!isMobile ? 'cursor-pointer' : ''}`}
+                          onMouseEnter={() => !isMobile && setIsHovered(true)}
+                          onMouseLeave={() => !isMobile && setIsHovered(false)}
+                          onClick={handleImageClick}
+                          onTouchStart={(e) => {
+                            if (isMobile) {
+                              if (e.touches.length === 2) {
+                                handlePinchStart(e);
+                              } else if (e.touches.length === 1 && zoomLevel === 1) {
+                                const target = e.currentTarget as HTMLDivElement & { touchStartX?: number };
+                                target.touchStartX = e.touches[0].clientX;
+                              }
+                            }
+                          }}
+                          onTouchMove={(e) => {
+                            if (isMobile && e.touches.length === 2) {
+                              handlePinchMove(e);
+                            }
+                          }}
+                          onTouchEnd={(e) => {
+                            if (isMobile) {
+                              if (isZooming) {
+                                handlePinchEnd();
+                              } else if (zoomLevel === 1) {
+                                const target = e.currentTarget as HTMLDivElement & { touchStartX?: number };
+                                const startX = target.touchStartX ?? 0;
+                                const diff = startX - e.changedTouches[0].clientX;
+                                if (Math.abs(diff) > 50) {
+                                  if (diff > 0) goToNextImage();
+                                  else goToPrevImage();
+                                }
+                              }
+                            }
+                          }}
+                        >
+                          {isMobile && generatedImages.length > 0 && (
+                            <div className="absolute top-2 right-2 flex gap-1 z-20">
+                              {zoomLevel > 1 && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); resetZoom(); }}
+                                  className="bg-black/50 text-white p-1.5 rounded-full"
+                                >
+                                  <ZoomOut size={16} />
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {isMobile && zoomLevel === 1 && generatedImages.length > 0 && (
+                            <div className="absolute top-2 left-2 bg-black/50 text-white text-[10px] px-2 py-1 rounded-full z-10 flex items-center gap-1">
+                              <ZoomIn size={10} />
+                              두 손가락으로 확대
+                            </div>
+                          )}
+
+                          {generatedImages.length > 1 && zoomLevel === 1 && (
+                            <>
+                              <button 
+                                className={`absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 p-2 rounded-full transition z-10 ${isHovered ? 'opacity-100' : 'md:opacity-0 opacity-70'}`}
+                                onClick={(e) => { e.stopPropagation(); goToPrevImage(); }}
+                              >
+                                <ChevronLeft size={20} className="text-white" />
+                              </button>
+                              <button 
+                                className={`absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 p-2 rounded-full transition z-10 ${isHovered ? 'opacity-100' : 'md:opacity-0 opacity-70'}`}
+                                onClick={(e) => { e.stopPropagation(); goToNextImage(); }}
+                              >
+                                <ChevronRight size={20} className="text-white" />
+                              </button>
+                            </>
+                          )}
+                          
+                          {generatedImages.length > 1 && zoomLevel === 1 && (
+                            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+                              {generatedImages.map((_, idx) => (
+                                <button
+                                  key={idx}
+                                  onClick={(e) => { e.stopPropagation(); setSelectedImageIndex(idx); }}
+                                  className={`w-2 h-2 rounded-full transition ${idx === selectedImageIndex ? 'bg-[#87D039]' : 'bg-zinc-300'}`}
+                                />
+                              ))}
+                            </div>
+                          )}
+
+                          <img 
+                            src={generatedImages[selectedImageIndex]} 
+                            alt={`Generated ${selectedImageIndex + 1}`} 
+                            className="max-w-full max-h-[250px] md:max-h-[320px] rounded-lg md:rounded-xl shadow-lg object-contain transition-transform duration-200"
+                            style={{
+                              transform: `scale(${zoomLevel}) translate(${zoomPosition.x / zoomLevel}px, ${zoomPosition.y / zoomLevel}px)`,
+                            }}
+                            draggable={false}
                           />
+
+                          {isHovered && !isMobile && (
+                            <div className="absolute top-3 right-3 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full">
+                              클릭하여 전체화면
+                            </div>
+                          )}
                         </div>
-                        <p className="text-white/60 text-[10px] mt-2 text-center">
-                          ⏳ 약 2-5분 소요 · 페이지를 닫지 마세요
-                        </p>
+                        
+                        <div className="grid grid-cols-4 gap-2 md:gap-3">
+                          {generatedImages.map((img, index) => (
+                            <div 
+                              key={index}
+                              onClick={() => { setSelectedImageIndex(index); resetZoom(); }}
+                              className={`relative aspect-square rounded-lg md:rounded-xl overflow-hidden cursor-pointer transition-all ${selectedImageIndex === index ? 'ring-2 md:ring-3 ring-[#87D039] shadow-lg' : 'ring-1 ring-zinc-200 hover:ring-zinc-400'}`}
+                            >
+                              <img src={img} alt={`Thumbnail ${index + 1}`} className="w-full h-full object-cover" />
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleDownload(index); }}
+                                className="absolute bottom-1 right-1 bg-black/70 text-white p-1.5 rounded-lg hover:bg-black transition-colors hidden md:block"
+                              >
+                                <Download size={12} />
+                              </button>
+                              <span className="absolute top-1 left-1 bg-black/70 text-white text-[8px] md:text-[10px] font-bold px-1.5 md:px-2 py-0.5 rounded">
+                                {index + 1}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex-1 flex items-center justify-center">
+                        <div className="text-center">
+                          <div className="w-14 h-14 md:w-16 md:h-16 bg-zinc-100 rounded-full flex items-center justify-center mx-auto mb-3 md:mb-4">
+                            <ImageIcon size={24} className="text-zinc-300 md:w-7 md:h-7" />
+                          </div>
+                          <p className="text-zinc-400 font-medium text-sm md:text-base">사진을 업로드하고<br/>생성 버튼을 눌러주세요</p>
+                        </div>
                       </div>
                     )}
-                    
-                    {videoStatus === 'completed' && (
-                      <div className="flex flex-col gap-2">
-                        <div className="flex gap-2">
+                  </div>
+                  
+                  {/* 360° 비디오 섹션 */}
+                  <div className={`mt-auto pt-4 md:pt-5 ${generatedImages.length === 0 ? 'opacity-60' : ''}`}>
+                    {/* 비디오 생성 완료 - 세련된 UI */}
+                    {videoStatus === 'completed' && videoId ? (
+                      <div className="bg-zinc-100 rounded-xl md:rounded-2xl overflow-hidden border border-zinc-200">
+                        {/* 헤더 */}
+                        <div className="flex items-center justify-between p-3 md:p-4 bg-white border-b border-zinc-200">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 bg-green-500 rounded-full flex items-center justify-center">
+                              <CheckCircle size={14} className="text-white" />
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-bold text-zinc-900">360° 비디오 완성!</h4>
+                              <p className="text-zinc-500 text-[10px]">8초 HD 영상</p>
+                            </div>
+                          </div>
                           <button
-                            onClick={() => setShowVideoViewer(true)}
-                            className="flex-1 py-2.5 md:py-3 bg-white text-purple-600 rounded-lg md:rounded-xl text-xs md:text-sm font-bold hover:bg-white/90 transition-colors flex items-center justify-center gap-2"
+                            onClick={() => {
+                              setVideoStatus('idle');
+                              setVideoId(null);
+                              setIsVideoPlaying(false);
+                            }}
+                            className="text-zinc-400 hover:text-zinc-600 text-[10px] px-2.5 py-1 bg-zinc-100 hover:bg-zinc-200 rounded-full transition-colors"
                           >
-                            <Play size={14} className="md:w-4 md:h-4" />
-                            영상 보기
+                            새로 만들기
+                          </button>
+                        </div>
+
+                        {/* 비디오 플레이어 */}
+                        <div className="relative aspect-video bg-zinc-200 group">
+                          <video
+                            ref={videoPlayerRef}
+                            src={`${API_URL}/api/video/download/${videoId}`}
+                            className="w-full h-full object-contain"
+                            loop
+                            playsInline
+                            muted
+                            onPlay={() => setIsVideoPlaying(true)}
+                            onPause={() => setIsVideoPlaying(false)}
+                          />
+                          
+                          {/* 플레이 오버레이 */}
+                          <div 
+                            className={`absolute inset-0 flex items-center justify-center bg-black/10 transition-opacity cursor-pointer ${isVideoPlaying ? 'opacity-0 hover:opacity-100' : 'opacity-100'}`}
+                            onClick={toggleVideoPlay}
+                          >
+                            <div className="w-14 h-14 bg-white/95 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg hover:scale-105 transition-transform">
+                              {isVideoPlaying ? (
+                                <Pause size={24} className="text-zinc-700" />
+                              ) : (
+                                <Play size={24} className="text-zinc-700 ml-1" />
+                              )}
+                            </div>
+                          </div>
+
+                          {/* 전체화면 버튼 */}
+                          <button
+                            onClick={() => setShowVideoFullscreen(true)}
+                            className="absolute top-3 right-3 p-2 bg-black/50 hover:bg-black/70 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          >
+                            <Maximize2 size={14} className="text-white" />
+                          </button>
+
+                          {/* 360° 배지 */}
+                          <div className="absolute top-3 left-3 px-2.5 py-1 bg-black/60 backdrop-blur-sm rounded-full text-white text-[10px] font-medium flex items-center gap-1.5">
+                            <RotateCw size={10} className="animate-spin" style={{animationDuration: '3s'}} />
+                            360°
+                          </div>
+                        </div>
+
+                        {/* 액션 버튼들 */}
+                        <div className="flex gap-2 p-3 md:p-4 bg-white">
+                          <button
+                            onClick={handleVideoShare}
+                            disabled={isVideoSharing}
+                            className="flex-1 py-2.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-medium transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+                          >
+                            {isVideoSharing ? (
+                              <>
+                                <Loader2 size={12} className="animate-spin" />
+                                준비 중...
+                              </>
+                            ) : (
+                              <>
+                                <Share2 size={12} />
+                                공유
+                              </>
+                            )}
                           </button>
                           <button
                             onClick={handleVideoDownload}
-                            className="flex-1 py-2.5 md:py-3 bg-green-500 text-white rounded-lg md:rounded-xl text-xs md:text-sm font-bold hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+                            className="flex-1 py-2.5 bg-[#87D039] text-black rounded-xl text-xs font-bold hover:bg-[#9AE045] transition-colors flex items-center justify-center gap-1.5"
                           >
-                            <Download size={14} className="md:w-4 md:h-4" />
+                            <Download size={12} />
                             다운로드
                           </button>
                         </div>
-                        <button
-                          onClick={() => {
-                            setVideoStatus('idle');
-                            setVideoId(null);
-                            setVideoUrl(null);
-                          }}
-                          className="py-2 px-4 bg-white/10 text-white/70 rounded-lg text-[10px] md:text-xs font-medium hover:bg-white/20 transition-colors"
-                        >
-                          새로 만들기
-                        </button>
                       </div>
-                    )}
-                    
-                    {videoStatus === 'failed' && (
-                      <div className="bg-red-500/20 backdrop-blur-sm rounded-xl p-4">
-                        <div className="flex items-center gap-2 mb-2">
-                          <AlertCircle size={16} className="text-red-200" />
-                          <span className="text-red-200 text-xs md:text-sm font-bold">생성 실패</span>
+                    ) : (
+                      /* 기본 상태 - 보라색 그라데이션 유지 */
+                      <div className="relative overflow-hidden rounded-xl md:rounded-2xl">
+                        <div className="absolute inset-0 bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600" />
+                        <div className="relative p-4 md:p-5">
+                          {/* 기본 상태 - 컴팩트 레이아웃 (웹사이트 스타일) */}
+                          <div className="flex items-center justify-between gap-3 mb-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center flex-shrink-0">
+                                <RotateCw size={18} className="text-white animate-spin" style={{animationDuration: '3s'}} />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <h4 className="text-sm font-bold text-white">360° 회전 비디오</h4>
+                                  <span className="px-1.5 py-0.5 bg-yellow-400 text-yellow-900 text-[8px] font-bold rounded">NEW</span>
+                                </div>
+                                <p className="text-white/70 text-[10px] mt-0.5">
+                                  {generatedImages.length === 0 
+                                    ? '먼저 이미지 4장을 생성하면 360° 비디오를 만들 수 있어요'
+                                    : '4장의 이미지로 회전 영상 생성'
+                                  }
+                                </p>
+                              </div>
+                            </div>
+                            
+                            <button
+                              onClick={() => setShowSampleModal(true)}
+                              className="flex items-center gap-1 px-2.5 py-1.5 bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white rounded-lg text-[10px] font-medium transition-colors flex-shrink-0"
+                            >
+                              <Play size={10} /> 샘플 보기
+                            </button>
+                          </div>
+                          
+                          {/* 비디오 생성 상태에 따른 UI */}
+                          {videoStatus === 'idle' && (
+                            <button
+                              onClick={() => {
+                                if (generatedImages.length < 4) {
+                                  toast.error('먼저 이미지 4장을 생성해주세요');
+                                  return;
+                                }
+                                setShowVideoModal(true);
+                              }}
+                              className={`w-full py-2.5 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-2 ${
+                                generatedImages.length >= 4
+                                  ? 'bg-white text-purple-600 hover:bg-white/90'
+                                  : 'bg-white/30 text-white/80 cursor-pointer'
+                              }`}
+                            >
+                              <Video size={14} />
+                              {generatedImages.length >= 4 
+                                ? `비디오 만들기 (${VIDEO_CREDITS}크레딧)`
+                                : `이미지 생성 후 사용 가능 (${VIDEO_CREDITS}크레딧)`
+                              }
+                            </button>
+                          )}
+                          
+                          {(videoStatus === 'pending' || videoStatus === 'processing') && (
+                            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <Loader2 size={14} className="animate-spin text-white" />
+                                  <span className="text-white text-xs font-bold">비디오 생성 중...</span>
+                                </div>
+                                <span className="text-white/80 text-xs font-bold">{videoProgress}%</span>
+                              </div>
+                              <div className="w-full h-1.5 bg-white/20 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-white transition-all duration-500 ease-out" 
+                                  style={{width: `${videoProgress}%`}}
+                                />
+                              </div>
+                              <p className="text-white/60 text-[9px] mt-1.5 text-center">
+                                약 2-5분 소요 · 페이지를 닫지 마세요
+                              </p>
+                            </div>
+                          )}
+                          
+                          {videoStatus === 'failed' && (
+                            <div className="bg-red-500/20 backdrop-blur-sm rounded-xl p-3">
+                              <div className="flex items-center gap-2 mb-2">
+                                <AlertCircle size={14} className="text-red-200" />
+                                <span className="text-red-200 text-xs font-bold">생성 실패</span>
+                              </div>
+                              <p className="text-red-200/80 text-[10px] mb-2">{videoError}</p>
+                              <button
+                                onClick={() => {
+                                  setVideoStatus('idle');
+                                  setVideoError(null);
+                                }}
+                                className="w-full py-2 bg-white/20 text-white rounded-lg text-xs font-bold hover:bg-white/30 transition-colors"
+                              >
+                                다시 시도
+                              </button>
+                            </div>
+                          )}
                         </div>
-                        <p className="text-red-200/80 text-[10px] md:text-xs mb-3">{videoError}</p>
-                        <button
-                          onClick={() => {
-                            setVideoStatus('idle');
-                            setVideoError(null);
-                          }}
-                          className="w-full py-2 bg-white/20 text-white rounded-lg text-xs font-bold hover:bg-white/30 transition-colors"
-                        >
-                          다시 시도
-                        </button>
                       </div>
                     )}
                   </div>
@@ -1341,7 +1538,7 @@ export default function Studio() {
             
             <div className="flex gap-3 mt-4">
               <button
-                onClick={() => handleShare('link')}
+                onClick={handleImageShare}
                 className="flex items-center gap-2 bg-zinc-700 text-white px-5 py-2.5 rounded-full font-medium text-sm hover:bg-zinc-600 transition"
               >
                 <Share2 size={16} />
@@ -1366,7 +1563,66 @@ export default function Studio() {
         </div>
       )}
 
-      {/* 360° 비디오 생성 확인 모달 - Portal로 body에 렌더링 */}
+      {/* 비디오 전체화면 모달 */}
+      {mounted && showVideoFullscreen && videoId && createPortal(
+        <div 
+          className="fixed inset-0 z-[9999] bg-black flex items-center justify-center"
+          onClick={() => setShowVideoFullscreen(false)}
+        >
+          <button
+            onClick={() => setShowVideoFullscreen(false)}
+            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors z-10"
+          >
+            <X size={24} className="text-white" />
+          </button>
+          
+          <video
+            src={`${API_URL}/api/video/download/${videoId}`}
+            autoPlay
+            loop
+            controls
+            playsInline
+            className="max-w-full max-h-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+          
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-3">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleVideoShare();
+              }}
+              disabled={isVideoSharing}
+              className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50"
+            >
+              {isVideoSharing ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  준비 중...
+                </>
+              ) : (
+                <>
+                  <Share2 size={16} />
+                  공유
+                </>
+              )}
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleVideoDownload();
+              }}
+              className="px-5 py-2.5 bg-[#87D039] text-black rounded-full text-sm font-bold hover:bg-[#9AE045] transition-colors flex items-center gap-2"
+            >
+              <Download size={16} />
+              다운로드
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* 360° 비디오 생성 확인 모달 */}
       {mounted && showVideoModal && createPortal(
         <div 
           className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4"
@@ -1376,12 +1632,10 @@ export default function Studio() {
             className="bg-white rounded-t-2xl md:rounded-2xl w-full md:max-w-md shadow-2xl max-h-[75vh] md:max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            {/* 모바일 드래그 핸들 */}
             <div className="md:hidden w-full py-3 flex justify-center flex-shrink-0">
               <div className="w-10 h-1 bg-zinc-300 rounded-full" />
             </div>
             
-            {/* 스크롤 가능한 컨텐츠 영역 */}
             <div className="flex-1 overflow-y-auto px-5 md:px-8 pt-2 md:pt-8">
               <div className="text-center mb-4 md:mb-6">
                 <div className="w-12 h-12 md:w-16 md:h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-3 md:mb-4">
@@ -1424,7 +1678,6 @@ export default function Studio() {
               )}
             </div>
 
-            {/* 하단 버튼 영역 - 항상 고정 */}
             <div className="flex-shrink-0 px-5 md:px-8 pb-5 md:pb-8 pt-3 border-t border-zinc-100">
               <div className="flex gap-3">
                 <button
@@ -1447,128 +1700,7 @@ export default function Studio() {
         document.body
       )}
 
-      {/* 생성된 비디오 뷰어 모달 - Portal로 body에 렌더링 */}
-      {mounted && showVideoViewer && videoId && createPortal(
-        <div 
-          className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-sm flex items-end md:items-center justify-center"
-          onClick={() => setShowVideoViewer(false)}
-        >
-          <div 
-            className="bg-zinc-900 rounded-t-2xl md:rounded-2xl w-full md:max-w-3xl shadow-2xl overflow-hidden max-h-[85vh] md:max-h-[85vh] flex flex-col"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* 모바일 드래그 핸들 */}
-            <div className="md:hidden w-full py-3 flex justify-center bg-zinc-900">
-              <div className="w-10 h-1 bg-zinc-600 rounded-full" />
-            </div>
-            {/* 비디오 플레이어 */}
-            <div className="relative aspect-video bg-black flex-shrink-0">
-              <video
-                src={`${API_URL}/api/video/download/${videoId}`}
-                autoPlay
-                loop
-                controls
-                playsInline
-                className="w-full h-full object-contain"
-              />
-              <button
-                onClick={() => setShowVideoViewer(false)}
-                className="absolute top-3 right-3 p-2 bg-black/50 hover:bg-black/70 rounded-full transition-colors"
-              >
-                <X size={20} className="text-white" />
-              </button>
-              
-              {/* 배지 */}
-              <div className="absolute top-3 left-3 px-3 py-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-[10px] md:text-xs font-bold rounded-full flex items-center gap-1.5">
-                <CheckCircle size={12} />
-                생성 완료
-              </div>
-            </div>
-            
-            {/* 하단 버튼 */}
-            <div className="p-4 md:p-5 border-t border-zinc-800">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                <div className="text-zinc-400 text-xs md:text-sm text-center md:text-left">
-                  360° 회전 비디오 · 8초 HD
-                </div>
-                <div className="flex gap-2 justify-center md:justify-end">
-                  <button
-                    onClick={() => setShowVideoViewer(false)}
-                    className="px-4 py-2.5 bg-zinc-700 text-white rounded-lg text-xs md:text-sm font-medium hover:bg-zinc-600 transition-colors"
-                  >
-                    닫기
-                  </button>
-                  {/* 공유 버튼 - PC/모바일 분리 처리 */}
-                  <button
-                    onClick={async () => {
-                      const videoUrlFull = `${API_URL}/api/video/download/${videoId}`;
-                      
-                      // 모바일인지 감지
-                      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                      
-                      if (isMobileDevice && navigator.share) {
-                        // 모바일: Web Share API 사용
-                        try {
-                          // 파일 공유 시도
-                          const response = await fetch(videoUrlFull);
-                          const blob = await response.blob();
-                          const file = new File([blob], `autopic_360_${videoId?.slice(0, 8)}.mp4`, { type: 'video/mp4' });
-                          
-                          if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                            await navigator.share({
-                              files: [file],
-                              title: 'AUTOPIC 360° 비디오',
-                              text: 'AI로 생성한 360° 상품 회전 비디오',
-                            });
-                            return;
-                          }
-                          
-                          // 파일 공유 실패 시 URL 공유
-                          await navigator.share({
-                            title: 'AUTOPIC 360° 비디오',
-                            text: 'AI로 생성한 360° 상품 회전 비디오',
-                            url: videoUrlFull,
-                          });
-                        } catch (err) {
-                          if ((err as Error).name !== 'AbortError') {
-                            toast.error('공유에 실패했습니다');
-                          }
-                        }
-                      } else {
-                        // PC: 클립보드에 링크 복사
-                        try {
-                          await navigator.clipboard.writeText(videoUrlFull);
-                          toast.success('비디오 링크가 클립보드에 복사되었습니다');
-                        } catch (err) {
-                          // 폴백: prompt로 URL 표시
-                          prompt('비디오 링크를 복사하세요:', videoUrlFull);
-                        }
-                      }
-                    }}
-                    className="px-4 py-2.5 bg-blue-500 text-white rounded-lg text-xs md:text-sm font-bold hover:bg-blue-600 transition-colors flex items-center gap-1.5"
-                  >
-                    <Share2 size={14} />
-                    {isMobile ? '공유' : '링크 복사'}
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleVideoDownload();
-                      setShowVideoViewer(false);
-                    }}
-                    className="px-4 py-2.5 bg-green-500 text-white rounded-lg text-xs md:text-sm font-bold hover:bg-green-600 transition-colors flex items-center gap-1.5"
-                  >
-                    <Download size={14} />
-                    다운로드
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* 샘플 비디오 보기 모달 - Portal로 body에 렌더링 */}
+      {/* 샘플 비디오 보기 모달 */}
       {mounted && showSampleModal && createPortal(
         <div 
           className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-end md:items-center justify-center"
@@ -1578,11 +1710,9 @@ export default function Studio() {
             className="bg-zinc-900 rounded-t-2xl md:rounded-2xl w-full md:max-w-2xl shadow-2xl overflow-hidden max-h-[85vh] md:max-h-[80vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            {/* 모바일 드래그 핸들 */}
             <div className="md:hidden w-full py-3 flex justify-center bg-zinc-900">
               <div className="w-10 h-1 bg-zinc-600 rounded-full" />
             </div>
-            {/* 비디오 플레이어 */}
             <div className="relative aspect-video bg-black flex-shrink-0">
               <video
                 src="/samples/sample-360.mp4"
@@ -1599,14 +1729,12 @@ export default function Studio() {
                 <X size={20} className="text-white" />
               </button>
               
-              {/* NEW 배지 */}
               <div className="absolute top-3 left-3 px-3 py-1 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-[10px] md:text-xs font-bold rounded-full flex items-center gap-1.5">
                 <RotateCw size={12} className="animate-spin" style={{animationDuration: '2s'}} />
                 360° 회전 비디오
               </div>
             </div>
             
-            {/* 정보 섹션 */}
             <div className="p-4 md:p-6 overflow-y-auto">
               <h3 className="text-base md:text-xl font-bold text-white mb-2">AI 360° 회전 비디오</h3>
               <p className="text-zinc-400 text-xs md:text-sm mb-4">
@@ -1614,7 +1742,6 @@ export default function Studio() {
                 스마트스토어, 쿠팡 등 이커머스 디테일 페이지에 활용하세요.
               </p>
               
-              {/* 샘플 이미지 그리드 */}
               <div className="grid grid-cols-4 gap-2 mb-4">
                 {[0, 1, 2, 3].map((i) => (
                   <div key={i} className="aspect-square rounded-lg overflow-hidden bg-zinc-800">

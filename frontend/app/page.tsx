@@ -4,8 +4,8 @@ import { useState, useEffect, useRef, ReactNode } from 'react';
 import Navbar from '@/components/Navbar';
 import Hero from '@/components/landing/Hero';
 import Studio from '@/components/landing/Studio';
+import GalleryPreview from '@/components/landing/GalleryPreview';
 import Process from '@/components/landing/Process';
-import Showcase from '@/components/landing/Showcase';
 import Reviews from '@/components/landing/Reviews';
 import Pricing from '@/components/landing/Pricing';
 import FAQ from '@/components/landing/FAQ';
@@ -70,9 +70,9 @@ export default function HomePage() {
     <div className="text-zinc-900 bg-white min-h-screen selection:bg-black selection:text-white">
       <Navbar isScrolled={isScrolled} />
       <Hero />
+      <AnimatedSection><GalleryPreview /></AnimatedSection>
       <AnimatedSection><Studio /></AnimatedSection>
       <AnimatedSection delay={50}><Process /></AnimatedSection>
-      <AnimatedSection><Showcase /></AnimatedSection>
       <AnimatedSection><Reviews /></AnimatedSection>
       <AnimatedSection delay={50}><Pricing /></AnimatedSection>
       <AnimatedSection><FAQ /></AnimatedSection>
