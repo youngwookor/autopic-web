@@ -3147,13 +3147,35 @@ REQUIREMENTS:
             video = operation.result.generated_videos[0]
             
             if video.video and video.video.video_bytes:
-                # 비디오 파일 저장
+                # 비디오 파일 저장 (오디오 제거)
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 filename = f"{video_id}_{timestamp}.mp4"
                 filepath = os.path.join(VIDEO_OUTPUT_DIR, filename)
                 
-                with open(filepath, "wb") as f:
+                # 임시 파일로 먼저 저장
+                temp_filepath = os.path.join(VIDEO_OUTPUT_DIR, f"temp_{filename}")
+                with open(temp_filepath, "wb") as f:
                     f.write(video.video.video_bytes)
+                
+                # ffmpeg로 오디오 제거 (배경음 제거)
+                try:
+                    import subprocess
+                    ffmpeg_cmd = [
+                        "ffmpeg", "-y",
+                        "-i", temp_filepath,
+                        "-c:v", "copy",  # 비디오 코덱 복사 (재인코딩 없음)
+                        "-an",  # 오디오 제거
+                        filepath
+                    ]
+                    subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+                    # 임시 파일 삭제
+                    os.remove(temp_filepath)
+                    print(f"비디오 오디오 제거 완료: {video_id}")
+                except Exception as ffmpeg_error:
+                    print(f"ffmpeg 오디오 제거 실패, 원본 사용: {ffmpeg_error}")
+                    # ffmpeg 실패 시 원본 파일 사용
+                    if os.path.exists(temp_filepath):
+                        os.rename(temp_filepath, filepath)
                 
                 video_url = f"/api/video/download/{video_id}"
                 
@@ -3360,6 +3382,68 @@ async def get_video_info():
             "부드러운 회전"
         ]
     }
+
+
+# ============================================================================
+# 설치형 프로그램용 비디오 API (X-API-Key 인증)
+# ============================================================================
+
+class DesktopVideoGenerateRequest(BaseModel):
+    images_base64: List[str]  # base64 이미지 4장
+
+
+@app.post("/api/v1/video/generate")
+async def desktop_video_generate(
+    request: DesktopVideoGenerateRequest, 
+    x_api_key: str = Header(None, alias="X-API-Key")
+):
+    """설치형 프로그램용 비디오 생성 API"""
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="API 키가 필요합니다")
+    
+    user_id = await verify_api_key(x_api_key)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="유효하지 않은 API 키입니다")
+    
+    # 기존 generate_video 함수 호출
+    video_request = VideoGenerateRequest(
+        user_id=user_id,
+        images=request.images_base64
+    )
+    
+    return await generate_video(video_request)
+
+
+@app.get("/api/v1/video/status/{video_id}")
+async def desktop_video_status(
+    video_id: str,
+    x_api_key: str = Header(None, alias="X-API-Key")
+):
+    """설치형 프로그램용 비디오 상태 조회"""
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="API 키가 필요합니다")
+    
+    user_id = await verify_api_key(x_api_key)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="유효하지 않은 API 키입니다")
+    
+    return await get_video_status(video_id)
+
+
+@app.get("/api/v1/video/download/{video_id}")
+async def desktop_video_download(
+    video_id: str,
+    x_api_key: str = Header(None, alias="X-API-Key")
+):
+    """설치형 프로그램용 비디오 다운로드"""
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="API 키가 필요합니다")
+    
+    user_id = await verify_api_key(x_api_key)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="유효하지 않은 API 키입니다")
+    
+    return await download_video(video_id)
 
 
 # ============================================================================
