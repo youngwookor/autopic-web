@@ -36,6 +36,38 @@ const formatPrice = (price: number) => {
   return new Intl.NumberFormat('ko-KR').format(price);
 };
 
+// 나이스페이 SDK 로드
+declare global {
+  interface Window {
+    AUTHNICE?: {
+      requestPay: (options: {
+        clientId: string;
+        method: string;
+        orderId: string;
+        amount: number;
+        goodsName: string;
+        returnUrl: string;
+        mallReserved?: string;
+        fnError?: (result: { errorMsg: string; msg: string }) => void;
+      }) => void;
+    };
+  }
+}
+
+function loadNicepaySDK(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (window.AUTHNICE) {
+      resolve();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://pay.nicepay.co.kr/v1/js/';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('나이스페이 SDK 로드 실패'));
+    document.head.appendChild(script);
+  });
+}
+
 function PricingPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -52,6 +84,8 @@ function PricingPageContent() {
   // Analytics: 가격 페이지 조회 추적
   useEffect(() => {
     trackViewPricing();
+    // 나이스페이 SDK 미리 로드
+    loadNicepaySDK().catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -97,6 +131,10 @@ function PricingPageContent() {
     });
 
     try {
+      // 1. 나이스페이 SDK 로드
+      await loadNicepaySDK();
+      
+      // 2. 결제 생성 (백엔드에 주문 정보 저장)
       const orderId = `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const createResponse = await fetch(`${API_URL}/api/payment/create`, {
         method: 'POST',
@@ -106,24 +144,37 @@ function PricingPageContent() {
 
       if (!createResponse.ok) throw new Error('결제 생성 실패');
 
-      const configResponse = await fetch(`${API_URL}/api/payment/config`);
+      // 3. 나이스페이 설정 가져오기
+      const configResponse = await fetch(`${API_URL}/api/nicepay/config`);
       const config = await configResponse.json();
-      const tossPayments = await loadTossPayments(config.client_key);
 
-      await tossPayments.requestPayment('카드', {
-        amount: plan.price,
+      // 4. 나이스페이 결제창 호출
+      const returnUrl = `${window.location.origin}/api/nicepay`;
+      
+      window.AUTHNICE?.requestPay({
+        clientId: config.client_id,
+        method: 'card',
         orderId: orderId,
-        orderName: `Autopic ${plan.name} - ${formatPrice(plan.credits)}크레딧`,
-        customerName: user.name || user.email,
-        successUrl: `${window.location.origin}/pricing/success?plan=${planId}`,
-        failUrl: `${window.location.origin}/pricing/fail`,
+        amount: plan.price,
+        goodsName: `Autopic ${plan.name} - ${formatPrice(plan.credits)}크레딧`,
+        returnUrl: returnUrl,
+        mallReserved: JSON.stringify({ plan: planId, userId: user.id }),
+        fnError: (result) => {
+          console.error('나이스페이 오류:', result);
+          // 사용자 취소는 에러 메시지 표시하지 않음
+          if (!result.errorMsg?.includes('취소')) {
+            toast.error(result.msg || result.errorMsg || '결제 중 오류가 발생했습니다');
+          }
+          setIsLoading(false);
+          setSelectedPlan(null);
+        },
       });
+
     } catch (error: any) {
-      if (error.code !== 'USER_CANCEL') {
-        toast.error(error.message || '결제 중 오류가 발생했습니다');
-      }
-    } finally {
+      console.error('결제 오류:', error);
+      toast.error(error.message || '결제 중 오류가 발생했습니다');
       setIsLoading(false);
+      setSelectedPlan(null);
     }
   };
 
@@ -361,7 +412,7 @@ function PricingPageContent() {
             <div className="bg-white rounded-2xl p-6 border border-zinc-200">
               <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mb-4"><Shield size={24} className="text-blue-500" /></div>
               <h4 className="font-bold mb-2">안전한 결제</h4>
-              <p className="text-sm text-zinc-500">토스페이먼츠를 통한 안전한 결제 시스템</p>
+              <p className="text-sm text-zinc-500">나이스페이를 통한 안전한 결제 시스템</p>
             </div>
             <div className="bg-white rounded-2xl p-6 border border-zinc-200">
               <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center mb-4"><Clock size={24} className="text-green-500" /></div>
@@ -395,20 +446,6 @@ function PricingPageContent() {
       </footer>
     </div>
   );
-}
-
-function loadTossPayments(clientKey: string): Promise<any> {
-  return new Promise((resolve, reject) => {
-    if ((window as any).TossPayments) {
-      resolve((window as any).TossPayments(clientKey));
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://js.tosspayments.com/v1/payment';
-    script.onload = () => resolve((window as any).TossPayments(clientKey));
-    script.onerror = () => reject(new Error('토스페이먼츠 로드 실패'));
-    document.head.appendChild(script);
-  });
 }
 
 export default function PricingPage() {

@@ -20,58 +20,122 @@ function SuccessContent() {
   const [credits, setCredits] = useState(0);
   const [totalCredits, setTotalCredits] = useState(0);
   const purchaseTracked = useRef(false);
+  const confirmAttempted = useRef(false);
 
   useEffect(() => {
     const confirmPayment = async () => {
-      const paymentKey = searchParams.get('paymentKey');
+      // 중복 호출 방지
+      if (confirmAttempted.current) return;
+      confirmAttempted.current = true;
+
+      // 나이스페이 파라미터 (API Route에서 리다이렉트됨)
+      const tid = searchParams.get('tid');
       const orderId = searchParams.get('orderId');
       const amount = searchParams.get('amount');
 
-      if (!paymentKey || !orderId || !amount || !user) {
-        setStatus('error');
+      // 토스페이먼츠 호환 (기존 방식)
+      const paymentKey = searchParams.get('paymentKey');
+
+      console.log('결제 확인 파라미터:', { tid, orderId, amount, paymentKey });
+
+      if (!user) {
+        console.log('사용자 정보 없음, 대기 중...');
+        confirmAttempted.current = false;
         return;
       }
 
-      try {
-        const response = await fetch(`${API_URL}/api/payment/confirm`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: user.id,
-            payment_key: paymentKey,
-            order_id: orderId,
-            amount: parseInt(amount),
-          }),
-        });
+      // 나이스페이 방식 (tid 사용)
+      if (tid && orderId && amount) {
+        try {
+          const response = await fetch(`${API_URL}/api/nicepay/confirm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: user.id,
+              tid: tid,
+              order_id: orderId,
+              amount: parseInt(amount),
+            }),
+          });
 
-        const data = await response.json();
+          const data = await response.json();
 
-        if (data.success) {
-          setCredits(data.credits);
-          setTotalCredits(data.total_credits);
-          setBalance(data.total_credits);
-          setStatus('success');
-          
-          // Analytics: 구매 완료 추적 (중복 방지)
-          if (!purchaseTracked.current) {
-            trackPurchase({
-              transactionId: orderId,
-              value: parseInt(amount),
-              credits: data.credits,
-              planName: searchParams.get('plan') || undefined,
-            });
-            purchaseTracked.current = true;
+          if (data.success) {
+            setCredits(data.credits);
+            setTotalCredits(data.total_credits);
+            setBalance(data.total_credits);
+            setStatus('success');
+            
+            // Analytics: 구매 완료 추적 (중복 방지)
+            if (!purchaseTracked.current) {
+              trackPurchase({
+                transactionId: orderId,
+                value: parseInt(amount),
+                credits: data.credits,
+                planName: searchParams.get('plan') || undefined,
+              });
+              purchaseTracked.current = true;
+            }
+            
+            toast.success('결제가 완료되었습니다!');
+          } else {
+            throw new Error(data.error || '결제 확인 실패');
           }
-          
-          toast.success('결제가 완료되었습니다!');
-        } else {
-          throw new Error(data.error || '결제 확인 실패');
+        } catch (error: any) {
+          console.error('Payment confirm error:', error);
+          setStatus('error');
+          toast.error(error.message || '결제 확인 중 오류가 발생했습니다');
         }
-      } catch (error: any) {
-        console.error('Payment confirm error:', error);
-        setStatus('error');
-        toast.error(error.message || '결제 확인 중 오류가 발생했습니다');
+        return;
       }
+
+      // 토스페이먼츠 방식 (기존 호환)
+      if (paymentKey && orderId && amount) {
+        try {
+          const response = await fetch(`${API_URL}/api/payment/confirm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: user.id,
+              payment_key: paymentKey,
+              order_id: orderId,
+              amount: parseInt(amount),
+            }),
+          });
+
+          const data = await response.json();
+
+          if (data.success) {
+            setCredits(data.credits);
+            setTotalCredits(data.total_credits);
+            setBalance(data.total_credits);
+            setStatus('success');
+            
+            if (!purchaseTracked.current) {
+              trackPurchase({
+                transactionId: orderId,
+                value: parseInt(amount),
+                credits: data.credits,
+                planName: searchParams.get('plan') || undefined,
+              });
+              purchaseTracked.current = true;
+            }
+            
+            toast.success('결제가 완료되었습니다!');
+          } else {
+            throw new Error(data.error || '결제 확인 실패');
+          }
+        } catch (error: any) {
+          console.error('Payment confirm error:', error);
+          setStatus('error');
+          toast.error(error.message || '결제 확인 중 오류가 발생했습니다');
+        }
+        return;
+      }
+
+      // 파라미터 없음
+      console.error('결제 파라미터 누락');
+      setStatus('error');
     };
 
     if (user) {

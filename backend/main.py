@@ -59,8 +59,13 @@ GEMINI_API_KEYS = os.getenv("GEMINI_API_KEYS", "").split(",")
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY", "")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
+# 토스페이먼츠 (기존 - 비활성화)
 TOSS_CLIENT_KEY = os.getenv("TOSS_CLIENT_KEY", "")
 TOSS_SECRET_KEY = os.getenv("TOSS_SECRET_KEY", "")
+
+# 나이스페이 설정
+NICEPAY_CLIENT_ID = os.getenv("NICEPAY_CLIENT_ID", "R2_65e14940a1ad4535a44197e7a90fc0e4")
+NICEPAY_SECRET_KEY = os.getenv("NICEPAY_SECRET_KEY", "b80597ce54674ed4834841f20af2b433")
 
 # Supabase 클라이언트 (Service Role Key 사용)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
@@ -1344,6 +1349,110 @@ async def get_payment_config():
         "client_key": TOSS_CLIENT_KEY,
         "plans": PRICING_PLANS,
     }
+
+
+# ============================================================================
+# 나이스페이 결제 API
+# ============================================================================
+
+
+class NicepayConfirmRequest(BaseModel):
+    user_id: str
+    tid: str
+    order_id: str
+    amount: int
+
+
+@app.get("/api/nicepay/config")
+async def get_nicepay_config():
+    """나이스페이 설정 반환"""
+    return {
+        "client_id": NICEPAY_CLIENT_ID,
+        "plans": PRICING_PLANS,
+    }
+
+
+@app.post("/api/nicepay/confirm")
+async def nicepay_confirm_payment(request: NicepayConfirmRequest):
+    """나이스페이 결제 승인"""
+    try:
+        # 1. 결제 정보 확인
+        payment_result = (
+            supabase.table("payments")
+            .select("*")
+            .eq("order_id", request.order_id)
+            .single()
+            .execute()
+        )
+
+        if not payment_result.data:
+            return {"success": False, "error": "결제 정보를 찾을 수 없습니다"}
+
+        payment = payment_result.data
+        
+        # 금액 검증
+        if payment["amount"] != request.amount:
+            return {"success": False, "error": "결제 금액이 일치하지 않습니다"}
+
+        # 2. 나이스페이 승인 API 호출
+        auth_string = base64.b64encode(f"{NICEPAY_CLIENT_ID}:{NICEPAY_SECRET_KEY}".encode()).decode()
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://api.nicepay.co.kr/v1/payments/{request.tid}",
+                headers={
+                    "Authorization": f"Basic {auth_string}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "amount": request.amount,
+                },
+            )
+
+        if response.status_code != 200:
+            error_data = response.json()
+            print(f"나이스페이 승인 오류: {error_data}")
+            return {
+                "success": False,
+                "error": error_data.get("resultMsg", "결제 승인 실패"),
+            }
+
+        nicepay_data = response.json()
+        
+        # 승인 결과 확인
+        if nicepay_data.get("resultCode") != "0000":
+            return {
+                "success": False,
+                "error": nicepay_data.get("resultMsg", "결제 승인 실패"),
+            }
+
+        # 3. 결제 정보 업데이트
+        credits_to_add = payment["credits"]
+
+        supabase.table("payments").update(
+            {
+                "status": "completed",
+                "payment_key": request.tid,  # tid를 payment_key로 저장
+                "method": nicepay_data.get("payMethod", "card"),
+                "paid_at": datetime.now().isoformat(),
+            }
+        ).eq("order_id", request.order_id).execute()
+
+        # 4. 크레딧 추가
+        new_credits = await add_credits(request.user_id, credits_to_add)
+
+        return {
+            "success": True,
+            "credits": credits_to_add,
+            "total_credits": new_credits,
+            "tid": request.tid,
+        }
+
+    except Exception as e:
+        print(f"나이스페이 결제 승인 오류: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
 
 
 # ============================================================================
