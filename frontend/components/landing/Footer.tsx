@@ -19,6 +19,7 @@ export default function Footer() {
             <div className="text-zinc-400 text-[10px] md:text-xs space-y-1">
               <p><span className="text-zinc-500">상호:</span> 듀엘로 | <span className="text-zinc-500">대표:</span> 장진영</p>
               <p><span className="text-zinc-500">사업자등록번호:</span> 705-23-02252</p>
+              <p><span className="text-zinc-500">통신판매업신고:</span> 제 2026-부천원미-0040 호</p>
               <p><span className="text-zinc-500">주소:</span> 경기도 부천시 원미구 송내대로265번길 53, 8층 804,805호</p>
               <p><span className="text-zinc-500">이메일:</span> support@autopic.app</p>
               <p><span className="text-zinc-500">전화:</span> 010-7470-8283</p>
