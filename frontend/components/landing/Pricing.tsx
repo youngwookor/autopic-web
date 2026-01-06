@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { CreditCard, Coins, Check, X, Zap, Crown, Monitor, Globe, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
+import { CreditCard, Coins, Check, X, Zap, Crown, Monitor, Globe, ChevronLeft, ChevronRight, ChevronDown, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@/lib/store';
 
@@ -17,8 +17,57 @@ const CREDIT_PACKAGES = [
 ];
 
 const SUBSCRIPTION_PLANS = [
-  { id: 'free', name: 'Free', desc: '무료 체험', price: 0, credits: '5 크레딧 (1회)', features: [{ text: '웹 미리보기', included: true }, { text: 'Standard/Premium', included: true }, { text: '설치형 프로그램', included: false }, { text: '우선 처리', included: false }], buttonText: '무료로 시작', recommended: false },
-  { id: 'starter', name: 'Starter', desc: '정기 구독', price: 29000, annualPrice: 23200, credits: '월 100 크레딧', monthlyCredits: 100, features: [{ text: '웹 미리보기', included: true }, { text: 'Standard/Premium', included: true }, { text: '우선 처리', included: true }, { text: '설치형 프로그램', included: false }], buttonText: '구독 시작', recommended: true }
+  { 
+    id: 'free', 
+    name: 'Free', 
+    desc: '무료 체험', 
+    price: 0, 
+    annualPrice: 0,
+    credits: '5 크레딧 (1회)', 
+    monthlyCredits: 5,
+    features: [
+      { text: '웹 미리보기', included: true }, 
+      { text: 'Standard/Premium', included: true }, 
+      { text: '설치형 프로그램', included: false }, 
+      { text: '우선 처리', included: false }
+    ], 
+    buttonText: '무료로 시작', 
+    recommended: false 
+  },
+  { 
+    id: 'starter', 
+    name: 'Starter', 
+    desc: '입문자용', 
+    price: 29000, 
+    annualPrice: 23200,
+    credits: '월 100 크레딧', 
+    monthlyCredits: 100,
+    features: [
+      { text: '웹 미리보기', included: true }, 
+      { text: 'Standard/Premium', included: true }, 
+      { text: '우선 처리', included: true }, 
+      { text: '설치형 프로그램', included: false }
+    ], 
+    buttonText: '구독 시작', 
+    recommended: false 
+  },
+  { 
+    id: 'basic', 
+    name: 'Basic', 
+    desc: '전문 셀러용', 
+    price: 99000, 
+    annualPrice: 79200,
+    credits: '월 300 크레딧', 
+    monthlyCredits: 300,
+    features: [
+      { text: '웹 미리보기', included: true }, 
+      { text: 'Standard/Premium', included: true }, 
+      { text: '우선 처리', included: true }, 
+      { text: '설치형 프로그램', included: true }
+    ], 
+    buttonText: '구독 시작', 
+    recommended: true 
+  }
 ];
 
 // 나이스페이 SDK 타입 선언
@@ -43,7 +92,6 @@ declare global {
 function loadNicepaySDK(): Promise<void> {
   return new Promise((resolve, reject) => {
     if (window.AUTHNICE) {
-      console.log('나이스페이 SDK 이미 로드됨');
       resolve();
       return;
     }
@@ -53,7 +101,6 @@ function loadNicepaySDK(): Promise<void> {
       const checkInterval = setInterval(() => {
         if (window.AUTHNICE) {
           clearInterval(checkInterval);
-          console.log('나이스페이 SDK 로드 완료 (대기 후)');
           resolve();
         }
       }, 100);
@@ -75,7 +122,6 @@ function loadNicepaySDK(): Promise<void> {
       const checkInterval = setInterval(() => {
         if (window.AUTHNICE) {
           clearInterval(checkInterval);
-          console.log('나이스페이 SDK 로드 완료');
           resolve();
         }
       }, 50);
@@ -102,9 +148,9 @@ export default function Pricing() {
   const router = useRouter();
   const { user, isAuthenticated } = useAuthStore();
   const [pricingMode, setPricingMode] = useState<'subscription' | 'credits'>('credits');
-  const [isAnnual, setIsAnnual] = useState(true);
+  const [isAnnual, setIsAnnual] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(2);
-  const [subSlide, setSubSlide] = useState(1);
+  const [subSlide, setSubSlide] = useState(2); // Basic을 기본 선택
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [touchStart, setTouchStart] = useState(0);
@@ -112,6 +158,10 @@ export default function Pricing() {
   const [webDetailOpen, setWebDetailOpen] = useState(false);
   const [desktopDetailOpen, setDesktopDetailOpen] = useState(false);
   const [sdkReady, setSdkReady] = useState(false);
+  
+  // 결제 확인 모달 상태
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [pendingPlan, setPendingPlan] = useState<typeof SUBSCRIPTION_PLANS[0] | null>(null);
 
   const formatPrice = (price: number) => new Intl.NumberFormat('ko-KR').format(price);
   
@@ -120,7 +170,6 @@ export default function Pricing() {
     loadNicepaySDK()
       .then(() => {
         setSdkReady(true);
-        console.log('나이스페이 SDK 준비 완료');
       })
       .catch((err) => {
         console.error('나이스페이 SDK 로드 실패:', err);
@@ -151,6 +200,7 @@ export default function Pricing() {
     setTouchEnd(0);
   };
 
+  // 크레딧 충전 결제
   const handlePayment = async (planId: string) => {
     if (!isAuthenticated || !user) {
       toast.error('로그인이 필요합니다');
@@ -165,9 +215,7 @@ export default function Pricing() {
     setSelectedPlan(planId);
     
     try {
-      // 1. 나이스페이 SDK 확인
       if (!window.AUTHNICE) {
-        console.log('SDK 재로드 시도...');
         await loadNicepaySDK();
       }
 
@@ -175,7 +223,6 @@ export default function Pricing() {
         throw new Error('결제 모듈을 불러올 수 없습니다. 페이지를 새로고침 해주세요.');
       }
       
-      // 2. 결제 생성 (백엔드에 주문 정보 저장)
       const orderId = `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const createResponse = await fetch(`${API_URL}/api/payment/create`, {
         method: 'POST',
@@ -185,17 +232,9 @@ export default function Pricing() {
       
       if (!createResponse.ok) throw new Error('결제 생성 실패');
       
-      // 3. 나이스페이 설정 가져오기 (일반 결제용)
       const configResponse = await fetch(`${API_URL}/api/nicepay/config`);
       const config = await configResponse.json();
       
-      console.log('나이스페이 결제 요청:', {
-        clientId: config.client_id,
-        orderId,
-        amount: plan.price,
-      });
-      
-      // 4. 나이스페이 결제창 호출
       const returnUrl = `${window.location.origin}/api/nicepay`;
       
       window.AUTHNICE.requestPay({
@@ -207,7 +246,6 @@ export default function Pricing() {
         returnUrl: returnUrl,
         mallReserved: JSON.stringify({ plan: planId, userId: user.id }),
         fnError: (result) => {
-          console.error('나이스페이 오류:', result);
           if (!result.errorMsg?.includes('취소') && !result.msg?.includes('취소')) {
             toast.error(result.msg || result.errorMsg || '결제 중 오류가 발생했습니다');
           }
@@ -217,16 +255,14 @@ export default function Pricing() {
       });
       
     } catch (error: any) {
-      console.error('결제 오류:', error);
       toast.error(error.message || '결제 중 오류가 발생했습니다');
       setIsLoading(false);
       setSelectedPlan(null);
     }
   };
 
-  // 구독 결제 핸들러
-  const handleSubscribe = async (planId: string) => {
-    // Free 플랜
+  // 구독 버튼 클릭 → 확인 모달 표시
+  const handleSubscribeClick = (planId: string) => {
     if (planId === 'free') {
       if (!isAuthenticated) {
         toast.success('회원가입하고 무료 5크레딧을 받으세요!');
@@ -238,27 +274,33 @@ export default function Pricing() {
       return;
     }
 
-    // 로그인 확인
     if (!isAuthenticated || !user) {
       toast.error('로그인이 필요합니다');
       router.push('/login');
       return;
     }
 
-    // 구독 플랜 정보 찾기
     const plan = SUBSCRIPTION_PLANS.find(p => p.id === planId);
     if (!plan || !plan.price) {
       toast.error('플랜 정보를 찾을 수 없습니다');
       return;
     }
 
+    // 확인 모달 표시
+    setPendingPlan(plan);
+    setShowPaymentModal(true);
+  };
+
+  // 모달에서 결제 진행 확인
+  const handleConfirmPayment = async () => {
+    if (!pendingPlan || !user) return;
+
+    setShowPaymentModal(false);
     setIsLoading(true);
-    setSelectedPlan(planId);
+    setSelectedPlan(pendingPlan.id);
 
     try {
-      // 1. 나이스페이 SDK 확인
       if (!window.AUTHNICE) {
-        console.log('SDK 재로드 시도...');
         await loadNicepaySDK();
       }
 
@@ -266,26 +308,28 @@ export default function Pricing() {
         throw new Error('결제 모듈을 불러올 수 없습니다. 페이지를 새로고침 해주세요.');
       }
 
-      // 2. 빌링용 설정 가져오기
       const configResponse = await fetch(`${API_URL}/api/nicepay/billing/config`);
       if (!configResponse.ok) {
         throw new Error('결제 설정을 가져올 수 없습니다');
       }
       const config = await configResponse.json();
 
-      // 3. 결제 금액 계산
-      const amount = isAnnual && plan.annualPrice ? plan.annualPrice : plan.price;
+      // 결제 금액 계산
+      let amount: number;
+      let goodsName: string;
+      
+      if (isAnnual) {
+        // 연간: 월 할인가 × 12개월
+        amount = (pendingPlan.annualPrice || pendingPlan.price) * 12;
+        goodsName = `Autopic ${pendingPlan.name} 구독 (연간)`;
+      } else {
+        // 월간: 정가
+        amount = pendingPlan.price;
+        goodsName = `Autopic ${pendingPlan.name} 구독 (월간)`;
+      }
+      
       const orderId = `sub_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      console.log('나이스페이 빌링 결제 요청:', {
-        clientId: config.client_id,
-        orderId,
-        amount,
-        plan: planId,
-        isAnnual,
-      });
-
-      // 4. 나이스페이 빌링 결제창 호출
       const returnUrl = `${window.location.origin}/api/nicepay-billing`;
 
       window.AUTHNICE.requestPay({
@@ -293,15 +337,14 @@ export default function Pricing() {
         method: 'card',
         orderId: orderId,
         amount: amount,
-        goodsName: `Autopic ${plan.name} 구독${isAnnual ? ' (연간)' : ' (월간)'}`,
+        goodsName: goodsName,
         returnUrl: returnUrl,
         mallReserved: JSON.stringify({ 
-          plan: planId, 
+          plan: pendingPlan.id, 
           userId: user.id, 
           isAnnual: isAnnual 
         }),
         fnError: (result) => {
-          console.error('나이스페이 빌링 오류:', result);
           if (!result.errorMsg?.includes('취소') && !result.msg?.includes('취소')) {
             toast.error(result.msg || result.errorMsg || '결제 중 오류가 발생했습니다');
           }
@@ -311,17 +354,104 @@ export default function Pricing() {
       });
 
     } catch (error: any) {
-      console.error('구독 결제 오류:', error);
       toast.error(error.message || '결제 중 오류가 발생했습니다');
       setIsLoading(false);
       setSelectedPlan(null);
     }
   };
 
+  // 결제 확인 모달 컴포넌트
+  const PaymentConfirmModal = () => {
+    if (!showPaymentModal || !pendingPlan) return null;
+
+    const monthlyPrice = isAnnual ? (pendingPlan.annualPrice || pendingPlan.price) : pendingPlan.price;
+    const totalAmount = isAnnual ? monthlyPrice * 12 : monthlyPrice;
+    const billingCycle = isAnnual ? '연간' : '월간';
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
+          {/* 헤더 */}
+          <div className="text-center mb-6">
+            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <CreditCard className="text-blue-600" size={24} />
+            </div>
+            <h3 className="text-xl font-bold">결제 정보 확인</h3>
+          </div>
+
+          {/* 결제 정보 */}
+          <div className="bg-zinc-50 rounded-xl p-4 mb-4 space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-zinc-500">플랜</span>
+              <span className="font-bold">{pendingPlan.name} ({billingCycle})</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-zinc-500">월 크레딧</span>
+              <span className="font-bold">{pendingPlan.monthlyCredits} 크레딧</span>
+            </div>
+            <div className="border-t border-zinc-200 pt-3">
+              {isAnnual ? (
+                <>
+                  <div className="flex justify-between items-center text-sm text-zinc-500 mb-1">
+                    <span>월 환산 금액</span>
+                    <span>₩{formatPrice(monthlyPrice)}/월</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-zinc-500">총 결제 금액</span>
+                    <div className="text-right">
+                      <span className="text-xl font-bold text-blue-600">₩{formatPrice(totalAmount)}</span>
+                      <div className="text-xs text-green-600 font-medium">20% 할인 적용</div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-500">결제 금액</span>
+                  <span className="text-xl font-bold text-blue-600">₩{formatPrice(totalAmount)}</span>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-zinc-500">결제 주기</span>
+              <span className="font-medium">{isAnnual ? '1년 단위 자동 갱신' : '매월 자동 결제'}</span>
+            </div>
+          </div>
+
+          {/* 안내 사항 */}
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-6">
+            <div className="flex gap-2">
+              <AlertCircle size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-700">
+                <p className="font-bold mb-1">월간 리셋형 구독</p>
+                <p>크레딧은 매월 새로 지급되며, 미사용분은 다음 달로 이월되지 않습니다.</p>
+              </div>
+            </div>
+          </div>
+
+          {/* 버튼 */}
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowPaymentModal(false)}
+              className="flex-1 py-3 rounded-xl font-bold text-zinc-600 bg-zinc-100 hover:bg-zinc-200 transition-colors"
+            >
+              취소
+            </button>
+            <button
+              onClick={handleConfirmPayment}
+              className="flex-1 py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+            >
+              결제 진행
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <section id="pricing" className="py-12 md:py-24 bg-zinc-50 overflow-hidden">
       <div className="max-w-[1200px] mx-auto px-4 md:px-6">
-        {/* 헤더 - 모바일 컴팩트 */}
+        {/* 헤더 */}
         <div className="text-center mb-4 md:mb-12">
           <span className="inline-block px-3 py-1 rounded-full border border-zinc-200 text-[10px] font-bold uppercase tracking-widest bg-white mb-2 md:mb-4 text-zinc-500">Pricing</span>
           <h2 className="text-2xl md:text-4xl lg:text-5xl font-bold tracking-tight mb-2 md:mb-4">합리적인 요금제</h2>
@@ -342,9 +472,8 @@ export default function Pricing() {
 
         {pricingMode === 'credits' ? (
           <>
-            {/* 설치형 프로그램 설명 - 모바일 초컴팩트 */}
+            {/* 설치형 프로그램 설명 */}
             <div className="bg-gradient-to-r from-zinc-900 to-zinc-800 rounded-xl p-3 md:p-6 mb-4 md:mb-12">
-              {/* 모바일: 한 줄로 압축 */}
               <div className="md:hidden">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
@@ -359,15 +488,10 @@ export default function Pricing() {
                       <p className="text-[10px] text-zinc-400">1크레딧당 8장 (정물4 + 모델4)</p>
                     </div>
                   </div>
-                  <button 
-                    onClick={() => setDesktopDetailOpen(!desktopDetailOpen)}
-                    className="text-[10px] text-zinc-400 flex items-center"
-                  >
+                  <button onClick={() => setDesktopDetailOpen(!desktopDetailOpen)} className="text-[10px] text-zinc-400 flex items-center">
                     상세 <ChevronDown size={10} className={`transition-transform ${desktopDetailOpen ? 'rotate-180' : ''}`}/>
                   </button>
                 </div>
-                
-                {/* 모바일 상세 기능 */}
                 {desktopDetailOpen && (
                   <div className="mt-2 pt-2 border-t border-white/10 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
                     <span className="flex items-center gap-1"><Zap size={8} className="text-yellow-500"/><span className="text-zinc-300">Standard 1C</span></span>
@@ -375,8 +499,6 @@ export default function Pricing() {
                   </div>
                 )}
               </div>
-
-              {/* PC: 기존 레이아웃 */}
               <div className="hidden md:flex flex-row items-center gap-8">
                 <div className="flex items-center gap-3 border-r border-white/10 pr-8">
                   <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -390,26 +512,18 @@ export default function Pricing() {
                     <p className="text-[11px] text-zinc-400">대량 작업 및 자동화</p>
                   </div>
                 </div>
-                
                 <div className="bg-[#87D039]/20 rounded-lg px-4 py-2 text-center">
                   <div className="text-2xl font-bold text-[#87D039]">8장</div>
                   <div className="text-[10px] text-[#87D039]/80">1크레딧당 (정물4 + 모델4)</div>
                 </div>
-                
                 <div className="flex items-center gap-4 text-sm">
                   <span className="flex items-center gap-1 text-white"><Zap size={14} className="text-yellow-500"/><span className="font-bold">Standard</span> <span className="text-zinc-400">1크레딧</span></span>
                   <span className="flex items-center gap-1 text-white"><Crown size={14} className="text-purple-500"/><span className="font-bold">Premium</span> <span className="text-zinc-400">3크레딧</span></span>
                 </div>
-                
-                <button 
-                  onClick={() => setDesktopDetailOpen(!desktopDetailOpen)}
-                  className="text-[11px] text-zinc-400 hover:text-white flex items-center gap-1 ml-auto"
-                >
+                <button onClick={() => setDesktopDetailOpen(!desktopDetailOpen)} className="text-[11px] text-zinc-400 hover:text-white flex items-center gap-1 ml-auto">
                   상세 기능 <ChevronDown size={12} className={`transition-transform ${desktopDetailOpen ? 'rotate-180' : ''}`}/>
                 </button>
               </div>
-              
-              {/* PC 상세 기능 */}
               {desktopDetailOpen && (
                 <div className="hidden md:grid mt-4 pt-4 border-t border-white/10 grid-cols-6 gap-2 text-[11px]">
                   <div className="flex items-center gap-1.5"><Check size={10} className="text-[#87D039]" /><span className="text-zinc-300">정물+모델 동시 생성</span></div>
@@ -485,9 +599,8 @@ export default function Pricing() {
           </>
         ) : (
           <>
-            {/* 웹 버전 설명 - 모바일 초컴팩트 */}
+            {/* 웹 버전 설명 */}
             <div className="bg-gradient-to-r from-blue-600 to-blue-500 rounded-xl p-3 md:p-6 mb-4 md:mb-12">
-              {/* 모바일 */}
               <div className="md:hidden">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
@@ -499,14 +612,10 @@ export default function Pricing() {
                       <p className="text-[10px] text-blue-100">1크레딧당 4장 (정물 또는 모델)</p>
                     </div>
                   </div>
-                  <button 
-                    onClick={() => setWebDetailOpen(!webDetailOpen)}
-                    className="text-[10px] text-blue-100 flex items-center"
-                  >
+                  <button onClick={() => setWebDetailOpen(!webDetailOpen)} className="text-[10px] text-blue-100 flex items-center">
                     상세 <ChevronDown size={10} className={`transition-transform ${webDetailOpen ? 'rotate-180' : ''}`}/>
                   </button>
                 </div>
-                
                 {webDetailOpen && (
                   <div className="mt-2 pt-2 border-t border-white/20 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
                     <span className="flex items-center gap-1"><Zap size={8} className="text-yellow-300"/><span className="text-blue-100">Standard 1C</span></span>
@@ -514,8 +623,6 @@ export default function Pricing() {
                   </div>
                 )}
               </div>
-
-              {/* PC */}
               <div className="hidden md:flex flex-row items-center gap-8">
                 <div className="flex items-center gap-3 border-r border-white/20 pr-8">
                   <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -526,25 +633,18 @@ export default function Pricing() {
                     <p className="text-[11px] text-blue-100">테스트 및 미리보기</p>
                   </div>
                 </div>
-                
                 <div className="bg-white/20 rounded-lg px-4 py-2 text-center">
                   <div className="text-2xl font-bold text-white">4장</div>
                   <div className="text-[10px] text-blue-100">1크레딧당 (정물 또는 모델)</div>
                 </div>
-                
                 <div className="flex items-center gap-4 text-sm">
                   <span className="flex items-center gap-1 text-white"><Zap size={14} className="text-yellow-300"/><span className="font-bold">Standard</span> <span className="text-blue-100">1크레딧</span></span>
                   <span className="flex items-center gap-1 text-white"><Crown size={14} className="text-purple-300"/><span className="font-bold">Premium</span> <span className="text-blue-100">3크레딧</span></span>
                 </div>
-                
-                <button 
-                  onClick={() => setWebDetailOpen(!webDetailOpen)}
-                  className="text-[11px] text-blue-100 hover:text-white flex items-center gap-1 ml-auto"
-                >
+                <button onClick={() => setWebDetailOpen(!webDetailOpen)} className="text-[11px] text-blue-100 hover:text-white flex items-center gap-1 ml-auto">
                   상세 기능 <ChevronDown size={12} className={`transition-transform ${webDetailOpen ? 'rotate-180' : ''}`}/>
                 </button>
               </div>
-              
               {webDetailOpen && (
                 <div className="hidden md:grid mt-4 pt-4 border-t border-white/20 grid-cols-5 gap-2 text-[11px]">
                   <div className="flex items-center gap-1.5"><Check size={10} className="text-white" /><span className="text-blue-100">기본/화보 정물 이미지</span></div>
@@ -563,39 +663,34 @@ export default function Pricing() {
               <span className={`text-xs font-medium flex items-center gap-1.5 ${isAnnual ? 'text-zinc-900' : 'text-zinc-400'}`}>연간 <span className="text-[#87D039] text-[10px] font-bold">20% 할인</span></span>
             </div>
 
-            {/* 모바일: 슬라이드 형태 */}
-            <div className="md:hidden relative h-[380px] mb-4" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={() => handleTouchEnd(true)}>
+            {/* 구독 캐러셀 - 모바일 */}
+            <div className="md:hidden relative h-[420px] mb-4" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={() => handleTouchEnd(true)}>
               <div className="absolute inset-0 flex items-center justify-center">
                 {SUBSCRIPTION_PLANS.map((plan, idx) => {
                   const diff = idx - subSlide;
                   let style: React.CSSProperties;
-                  if (diff === 0) {
-                    style = { transform: 'translateX(0) scale(1)', opacity: 1, zIndex: 30 };
-                  } else if (diff === -1) {
-                    style = { transform: 'translateX(-70%) scale(0.85)', opacity: 0.5, zIndex: 20 };
-                  } else if (diff === 1) {
-                    style = { transform: 'translateX(70%) scale(0.85)', opacity: 0.5, zIndex: 20 };
-                  } else {
-                    style = { transform: 'translateX(0) scale(0.5)', opacity: 0, zIndex: 0 };
-                  }
+                  if (diff === 0) style = { transform: 'translateX(0) scale(1)', opacity: 1, zIndex: 30 };
+                  else if (diff === -1) style = { transform: 'translateX(-70%) scale(0.85)', opacity: 0.5, zIndex: 20 };
+                  else if (diff === 1) style = { transform: 'translateX(70%) scale(0.85)', opacity: 0.5, zIndex: 20 };
+                  else style = { transform: 'translateX(0) scale(0.5)', opacity: 0, zIndex: 0 };
                   const isCenter = idx === subSlide;
                   const displayPrice = isAnnual && plan.annualPrice ? plan.annualPrice : plan.price;
                   
                   return (
                     <div key={plan.id} className="absolute w-[260px] transition-all duration-500 ease-out cursor-pointer" style={style} onClick={() => setSubSlide(idx)}>
-                      <div className={`p-5 rounded-2xl flex flex-col relative ${plan.recommended && isCenter ? 'bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-2xl' : isCenter ? 'bg-white border-2 border-zinc-900 shadow-2xl' : 'bg-white border border-zinc-200 shadow-lg'}`}>
+                      <div className={`p-5 md:p-8 rounded-2xl md:rounded-3xl flex flex-col relative ${plan.recommended && isCenter ? 'bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-2xl' : isCenter ? 'bg-white border-2 border-zinc-900 shadow-2xl' : 'bg-white border border-zinc-200 shadow-lg'}`}>
                         {plan.recommended && isCenter && <div className="absolute -top-3 left-1/2 -translate-x-1/2"><span className="bg-amber-400 text-black text-[10px] font-bold px-4 py-1 rounded-full">추천</span></div>}
-                        <div className="text-center mb-3 mt-2">
-                          <h3 className="text-lg font-bold mb-1">{plan.name}</h3>
+                        <div className="text-center mb-3 md:mb-4 mt-2">
+                          <h3 className="text-lg md:text-xl font-bold mb-1">{plan.name}</h3>
                           <p className={`text-xs ${plan.recommended && isCenter ? 'text-blue-100' : 'text-zinc-500'}`}>{plan.desc}</p>
                         </div>
-                        <div className="text-center mb-3">
-                          <div className="text-2xl font-bold mb-1">₩{formatPrice(displayPrice)}{displayPrice > 0 && <span className={`text-sm font-normal ${plan.recommended && isCenter ? 'text-blue-100' : 'text-zinc-400'}`}>/월</span>}</div>
+                        <div className="text-center mb-3 md:mb-4">
+                          <div className="text-2xl md:text-4xl font-bold mb-1">₩{formatPrice(displayPrice)}{displayPrice > 0 && <span className={`text-sm font-normal ${plan.recommended && isCenter ? 'text-blue-100' : 'text-zinc-400'}`}>/월</span>}</div>
                           <p className={`text-xs ${plan.recommended && isCenter ? 'text-blue-100' : 'text-zinc-500'}`}>{plan.credits}</p>
                           {isAnnual && displayPrice > 0 && <p className="text-[10px] text-[#87D039] mt-1">연간 결제 시 20% 할인</p>}
                         </div>
-                        <div className={`rounded-xl p-3 mb-3 flex-1 ${plan.recommended && isCenter ? 'bg-white/10' : 'bg-zinc-50'}`}>
-                          <div className="space-y-1.5 text-xs">
+                        <div className={`rounded-xl p-3 mb-3 md:mb-4 flex-1 ${plan.recommended && isCenter ? 'bg-white/10' : 'bg-zinc-50'}`}>
+                          <div className="space-y-1.5 text-xs md:text-sm">
                             {plan.features.map((f, i) => (
                               <div key={i} className="flex items-center gap-2">
                                 {f.included ? <Check size={12} className="text-[#87D039]" /> : <X size={12} className={plan.recommended && isCenter ? 'text-blue-200/50' : 'text-zinc-300'} />}
@@ -605,9 +700,9 @@ export default function Pricing() {
                           </div>
                         </div>
                         <button 
-                          onClick={(e) => { e.stopPropagation(); handleSubscribe(plan.id); }} 
+                          onClick={(e) => { e.stopPropagation(); handleSubscribeClick(plan.id); }} 
                           disabled={isLoading && selectedPlan === plan.id} 
-                          className={`w-full py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${plan.recommended && isCenter ? 'bg-white text-blue-600 hover:bg-blue-50' : isCenter ? 'bg-zinc-900 text-white hover:bg-black' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
+                          className={`w-full py-2.5 md:py-3.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${plan.recommended && isCenter ? 'bg-white text-blue-600 hover:bg-blue-50' : isCenter ? 'bg-zinc-900 text-white hover:bg-black' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
                         >
                           {isLoading && selectedPlan === plan.id ? '처리 중...' : plan.buttonText}
                         </button>
@@ -618,47 +713,63 @@ export default function Pricing() {
               </div>
             </div>
             <p className="text-center text-xs text-zinc-400 mb-3 md:hidden">← 좌우로 스와이프하세요 →</p>
-            {/* 모바일 인디케이터 */}
             <div className="flex justify-center gap-1.5 mb-6 md:hidden">
               {SUBSCRIPTION_PLANS.map((_, idx) => (<button key={idx} onClick={() => setSubSlide(idx)} className={`h-1.5 rounded-full transition-all duration-300 ${subSlide === idx ? 'bg-zinc-900 w-6' : 'bg-zinc-300 w-1.5'}`} />))}
             </div>
 
-            {/* PC: 2카드 그리드 */}
-            <div className="hidden md:grid grid-cols-2 gap-6 max-w-[700px] mx-auto mb-8 md:mb-10">
-              {SUBSCRIPTION_PLANS.map((plan) => {
-                const displayPrice = isAnnual && plan.annualPrice ? plan.annualPrice : plan.price;
-                return (
-                  <div key={plan.id} className={`p-6 md:p-8 rounded-2xl md:rounded-3xl flex flex-col relative ${plan.recommended ? 'bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-2xl' : 'bg-white border-2 border-zinc-200 shadow-lg hover:border-zinc-400 transition-all'}`}>
-                    {plan.recommended && <div className="absolute -top-3 left-1/2 -translate-x-1/2"><span className="bg-amber-400 text-black text-[10px] font-bold px-4 py-1 rounded-full">추천</span></div>}
-                    <div className="text-center mb-4 md:mb-6 mt-2">
-                      <h3 className="text-lg md:text-xl font-bold mb-1">{plan.name}</h3>
-                      <p className={`text-xs md:text-sm ${plan.recommended ? 'text-blue-100' : 'text-zinc-500'}`}>{plan.desc}</p>
-                    </div>
-                    <div className="text-center mb-4 md:mb-6">
-                      <div className="text-3xl md:text-4xl font-bold mb-1">₩{formatPrice(displayPrice)}{displayPrice > 0 && <span className={`text-sm md:text-base font-normal ${plan.recommended ? 'text-blue-100' : 'text-zinc-400'}`}>/월</span>}</div>
-                      <p className={`text-xs md:text-sm ${plan.recommended ? 'text-blue-100' : 'text-zinc-500'}`}>{plan.credits}</p>
-                      {isAnnual && displayPrice > 0 && <p className="text-[10px] text-[#87D039] mt-1">연간 결제 시 20% 할인</p>}
-                    </div>
-                    <div className={`rounded-xl p-3 md:p-4 mb-4 md:mb-6 flex-1 ${plan.recommended ? 'bg-white/10' : 'bg-zinc-50'}`}>
-                      <div className="space-y-1.5 md:space-y-2 text-xs md:text-sm">
-                        {plan.features.map((f, i) => (
-                          <div key={i} className="flex items-center gap-2">
-                            {f.included ? <Check size={12} className="text-[#87D039]" /> : <X size={12} className={plan.recommended ? 'text-blue-200/50' : 'text-zinc-300'} />}
-                            <span className={f.included ? (plan.recommended ? 'text-white' : 'text-zinc-700') : (plan.recommended ? 'text-blue-200/50' : 'text-zinc-400')}>{f.text}</span>
+            {/* 구독 캐러셀 - PC */}
+            <div className="hidden md:block relative h-[520px] mb-8">
+              <button onClick={prevSubSlide} disabled={subSlide === 0} className={`absolute left-4 md:left-8 top-1/2 -translate-y-1/2 w-12 h-12 bg-white border border-zinc-200 rounded-full flex items-center justify-center transition-all z-40 shadow-lg ${subSlide === 0 ? 'opacity-30' : 'hover:scale-110'}`}><ChevronLeft size={24} /></button>
+              <button onClick={nextSubSlide} disabled={subSlide === SUBSCRIPTION_PLANS.length - 1} className={`absolute right-4 md:right-8 top-1/2 -translate-y-1/2 w-12 h-12 bg-white border border-zinc-200 rounded-full flex items-center justify-center transition-all z-40 shadow-lg ${subSlide === SUBSCRIPTION_PLANS.length - 1 ? 'opacity-30' : 'hover:scale-110'}`}><ChevronRight size={24} /></button>
+              <div className="absolute inset-0 flex items-center justify-center">
+                {SUBSCRIPTION_PLANS.map((plan, idx) => {
+                  const diff = idx - subSlide;
+                  let style: React.CSSProperties;
+                  if (diff === 0) style = { transform: 'translateX(0) scale(1)', opacity: 1, zIndex: 30 };
+                  else if (diff === -1) style = { transform: 'translateX(-70%) scale(0.85)', opacity: 0.5, zIndex: 20 };
+                  else if (diff === 1) style = { transform: 'translateX(70%) scale(0.85)', opacity: 0.5, zIndex: 20 };
+                  else style = { transform: 'translateX(0) scale(0.5)', opacity: 0, zIndex: 0 };
+                  const isCenter = idx === subSlide;
+                  const displayPrice = isAnnual && plan.annualPrice ? plan.annualPrice : plan.price;
+                  
+                  return (
+                    <div key={plan.id} className="absolute w-[320px] transition-all duration-500 ease-out cursor-pointer" style={style} onClick={() => setSubSlide(idx)}>
+                      <div className={`p-8 rounded-3xl flex flex-col relative ${plan.recommended && isCenter ? 'bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-2xl' : isCenter ? 'bg-white border-2 border-zinc-900 shadow-2xl' : 'bg-white border border-zinc-200 shadow-lg'}`}>
+                        {plan.recommended && isCenter && <div className="absolute -top-3 left-1/2 -translate-x-1/2"><span className="bg-amber-400 text-black text-[10px] font-bold px-4 py-1 rounded-full">추천</span></div>}
+                        <div className="text-center mb-4 mt-2">
+                          <h3 className="text-xl font-bold mb-1">{plan.name}</h3>
+                          <p className={`text-xs ${plan.recommended && isCenter ? 'text-blue-100' : 'text-zinc-500'}`}>{plan.desc}</p>
+                        </div>
+                        <div className="text-center mb-4">
+                          <div className="text-4xl font-bold mb-1">₩{formatPrice(displayPrice)}{displayPrice > 0 && <span className={`text-base font-normal ${plan.recommended && isCenter ? 'text-blue-100' : 'text-zinc-400'}`}>/월</span>}</div>
+                          <p className={`text-sm ${plan.recommended && isCenter ? 'text-blue-100' : 'text-zinc-500'}`}>{plan.credits}</p>
+                          {isAnnual && displayPrice > 0 && <p className="text-[10px] text-[#87D039] mt-1">연간 결제 시 20% 할인</p>}
+                        </div>
+                        <div className={`rounded-xl p-4 mb-4 flex-1 ${plan.recommended && isCenter ? 'bg-white/10' : 'bg-zinc-50'}`}>
+                          <div className="space-y-2 text-sm">
+                            {plan.features.map((f, i) => (
+                              <div key={i} className="flex items-center gap-2">
+                                {f.included ? <Check size={14} className="text-[#87D039]" /> : <X size={14} className={plan.recommended && isCenter ? 'text-blue-200/50' : 'text-zinc-300'} />}
+                                <span className={f.included ? (plan.recommended && isCenter ? 'text-white' : 'text-zinc-700') : (plan.recommended && isCenter ? 'text-blue-200/50' : 'text-zinc-400')}>{f.text}</span>
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        </div>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleSubscribeClick(plan.id); }} 
+                          disabled={isLoading && selectedPlan === plan.id} 
+                          className={`w-full py-3.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${plan.recommended && isCenter ? 'bg-white text-blue-600 hover:bg-blue-50' : isCenter ? 'bg-zinc-900 text-white hover:bg-black' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
+                        >
+                          {isLoading && selectedPlan === plan.id ? '처리 중...' : plan.buttonText}
+                        </button>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => handleSubscribe(plan.id)} 
-                      disabled={isLoading && selectedPlan === plan.id} 
-                      className={`w-full py-3 md:py-3.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${plan.recommended ? 'bg-white text-blue-600 hover:bg-blue-50' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'}`}
-                    >
-                      {isLoading && selectedPlan === plan.id ? '처리 중...' : plan.buttonText}
-                    </button>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+            </div>
+            <div className="hidden md:flex justify-center gap-1.5 mb-10">
+              {SUBSCRIPTION_PLANS.map((_, idx) => (<button key={idx} onClick={() => setSubSlide(idx)} className={`h-1.5 rounded-full transition-all duration-300 ${subSlide === idx ? 'bg-zinc-900 w-6' : 'bg-zinc-300 w-1.5'}`} />))}
             </div>
 
             {/* 구독 안내 */}
@@ -693,6 +804,9 @@ export default function Pricing() {
           <button onClick={() => toast('문의 기능은 준비 중입니다', { icon: '📧' })} className="w-full md:w-auto whitespace-nowrap px-5 py-2.5 bg-zinc-900 text-white rounded-lg font-bold text-sm hover:bg-black transition-colors">문의하기</button>
         </div>
       </div>
+
+      {/* 결제 확인 모달 */}
+      <PaymentConfirmModal />
     </section>
   );
 }
