@@ -25,48 +25,57 @@ const SUBSCRIPTION_PLANS = [
     annualPrice: 0,
     credits: '5 크레딧 (1회)', 
     monthlyCredits: 5,
+    pricePerCredit: 0,
+    discount: 0,
     features: [
-      { text: '웹 미리보기', included: true }, 
+      { text: '웹 스튜디오', included: true }, 
       { text: 'Standard/Premium', included: true }, 
       { text: '설치형 프로그램', included: false }, 
       { text: '우선 처리', included: false }
     ], 
     buttonText: '무료로 시작', 
-    recommended: false 
+    popular: false,
+    best: false
   },
   { 
     id: 'starter', 
     name: 'Starter', 
-    desc: '입문자용', 
+    desc: '가장 인기', 
     price: 29000, 
     annualPrice: 23200,
     credits: '월 100 크레딧', 
     monthlyCredits: 100,
+    pricePerCredit: 290,
+    discount: 0,
     features: [
-      { text: '웹 미리보기', included: true }, 
+      { text: '웹 스튜디오', included: true }, 
       { text: 'Standard/Premium', included: true }, 
       { text: '우선 처리', included: true }, 
       { text: '설치형 프로그램', included: false }
     ], 
     buttonText: '구독 시작', 
-    recommended: false 
+    popular: true,
+    best: false
   },
   { 
     id: 'basic', 
     name: 'Basic', 
-    desc: '전문 셀러용', 
+    desc: '최고 가성비', 
     price: 99000, 
     annualPrice: 79200,
     credits: '월 300 크레딧', 
     monthlyCredits: 300,
+    pricePerCredit: 330,
+    discount: 0,
     features: [
-      { text: '웹 미리보기', included: true }, 
+      { text: '웹 스튜디오', included: true }, 
       { text: 'Standard/Premium', included: true }, 
       { text: '우선 처리', included: true }, 
       { text: '설치형 프로그램', included: true }
     ], 
     buttonText: '구독 시작', 
-    recommended: true 
+    popular: false,
+    best: true
   }
 ];
 
@@ -149,8 +158,8 @@ export default function Pricing() {
   const { user, isAuthenticated } = useAuthStore();
   const [pricingMode, setPricingMode] = useState<'subscription' | 'credits'>('credits');
   const [isAnnual, setIsAnnual] = useState(false);
-  const [currentSlide, setCurrentSlide] = useState(2);
-  const [subSlide, setSubSlide] = useState(2); // Basic을 기본 선택
+  const [currentSlide, setCurrentSlide] = useState(2); // Plus가 기본
+  const [subSlide, setSubSlide] = useState(1); // Starter가 기본 (가장 인기)
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [touchStart, setTouchStart] = useState(0);
@@ -448,6 +457,77 @@ export default function Pricing() {
     );
   };
 
+  // 공통 카드 렌더링 함수 (크레딧/구독 공용)
+  const renderCreditCard = (pack: typeof CREDIT_PACKAGES[0], idx: number, isCenter: boolean) => {
+    const isBest = (pack as any).best;
+    return (
+      <div className={`p-5 md:p-8 rounded-2xl md:rounded-3xl flex flex-col relative ${pack.popular && isCenter ? 'bg-zinc-900 text-white shadow-2xl' : isBest && isCenter ? 'bg-gradient-to-br from-purple-600 to-purple-800 text-white shadow-2xl' : isCenter ? 'bg-white border-2 border-zinc-900 shadow-2xl' : 'bg-white border border-zinc-200 shadow-lg'}`}>
+        {pack.discount > 0 && isCenter && !pack.popular && !isBest && (<div className="absolute -top-3 -right-2 bg-red-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-full shadow-lg">{pack.discount}% OFF</div>)}
+        {pack.popular && (<div className="flex justify-center mb-2"><span className="bg-[#87D039] text-black text-[10px] font-bold px-3 py-1 rounded-full">🔥 가장 인기</span></div>)}
+        {isBest && (<div className="flex justify-center mb-2"><span className="bg-yellow-400 text-black text-[10px] font-bold px-3 py-1 rounded-full">💎 최고 가성비</span></div>)}
+        <div className="text-center mb-3 md:mb-4">
+          <h3 className="text-lg md:text-xl font-bold mb-1">{pack.name}</h3>
+          <p className={`text-xs ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}>{pack.desc}</p>
+        </div>
+        <div className="text-center mb-3 md:mb-4">
+          <div className="text-2xl md:text-4xl font-bold mb-1">₩{formatPrice(pack.price)}</div>
+          <p className={`text-xs ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}>{formatPrice(pack.credits)} 크레딧</p>
+          <p className={`text-[10px] mt-1 ${(pack.popular || isBest) && isCenter ? 'text-zinc-400' : 'text-zinc-400'}`}>크레딧당 ₩{pack.pricePerCredit}{pack.discount > 0 && (<span className={`ml-1 font-bold ${(pack.popular || isBest) && isCenter ? 'text-[#87D039]' : 'text-red-500'}`}>({pack.discount}% 할인)</span>)}</p>
+        </div>
+        <div className={`rounded-xl p-3 mb-3 md:mb-4 ${(pack.popular || isBest) && isCenter ? 'bg-white/10' : 'bg-zinc-50'}`}>
+          <div className="space-y-1.5 text-xs md:text-sm">
+            <div className="flex items-center justify-between"><span className={`flex items-center gap-1.5 ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}><Zap size={10} /> Standard</span><span className="font-bold">{formatPrice(pack.flashCount)}회</span></div>
+            <div className="flex items-center justify-between"><span className={`flex items-center gap-1.5 ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}><Crown size={10} /> Premium</span><span className="font-bold">{formatPrice(pack.proCount)}회</span></div>
+          </div>
+        </div>
+        <button onClick={(e) => { e.stopPropagation(); handlePayment(pack.id); }} disabled={isLoading && selectedPlan === pack.id} className={`w-full py-2.5 md:py-3.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${pack.popular && isCenter ? 'bg-[#87D039] text-black hover:bg-[#9AE045]' : isBest && isCenter ? 'bg-yellow-400 text-black hover:bg-yellow-300' : isCenter ? 'bg-zinc-900 text-white hover:bg-black' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}>{isLoading && selectedPlan === pack.id ? '처리 중...' : '구매하기'}</button>
+      </div>
+    );
+  };
+
+  // 구독 카드 렌더링 함수
+  const renderSubscriptionCard = (plan: typeof SUBSCRIPTION_PLANS[0], idx: number, isCenter: boolean) => {
+    const displayPrice = isAnnual && plan.annualPrice ? plan.annualPrice : plan.price;
+    const isBest = plan.best;
+    const isPopular = plan.popular;
+    
+    return (
+      <div className={`p-5 md:p-8 rounded-2xl md:rounded-3xl flex flex-col relative ${isPopular && isCenter ? 'bg-zinc-900 text-white shadow-2xl' : isBest && isCenter ? 'bg-gradient-to-br from-purple-600 to-purple-800 text-white shadow-2xl' : isCenter ? 'bg-white border-2 border-zinc-900 shadow-2xl' : 'bg-white border border-zinc-200 shadow-lg'}`}>
+        {isPopular && (<div className="flex justify-center mb-2"><span className="bg-[#87D039] text-black text-[10px] font-bold px-3 py-1 rounded-full">🔥 가장 인기</span></div>)}
+        {isBest && (<div className="flex justify-center mb-2"><span className="bg-yellow-400 text-black text-[10px] font-bold px-3 py-1 rounded-full">💎 최고 가성비</span></div>)}
+        <div className="text-center mb-3 md:mb-4">
+          <h3 className="text-lg md:text-xl font-bold mb-1">{plan.name}</h3>
+          <p className={`text-xs ${(isPopular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}>{plan.desc}</p>
+        </div>
+        <div className="text-center mb-3 md:mb-4">
+          <div className="text-2xl md:text-4xl font-bold mb-1">
+            {displayPrice > 0 ? `₩${formatPrice(displayPrice)}` : '₩0'}
+            {displayPrice > 0 && <span className={`text-sm md:text-base font-normal ${(isPopular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-400'}`}>/월</span>}
+          </div>
+          <p className={`text-xs ${(isPopular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}>{plan.credits}</p>
+          {isAnnual && displayPrice > 0 && <p className="text-[10px] text-[#87D039] mt-1 font-bold">연간 결제 시 20% 할인</p>}
+        </div>
+        <div className={`rounded-xl p-3 mb-3 md:mb-4 flex-1 ${(isPopular || isBest) && isCenter ? 'bg-white/10' : 'bg-zinc-50'}`}>
+          <div className="space-y-1.5 text-xs md:text-sm">
+            {plan.features.map((f, i) => (
+              <div key={i} className="flex items-center gap-2">
+                {f.included ? <Check size={12} className="text-[#87D039]" /> : <X size={12} className={(isPopular || isBest) && isCenter ? 'text-zinc-500' : 'text-zinc-300'} />}
+                <span className={f.included ? ((isPopular || isBest) && isCenter ? 'text-white' : 'text-zinc-700') : ((isPopular || isBest) && isCenter ? 'text-zinc-500' : 'text-zinc-400')}>{f.text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <button 
+          onClick={(e) => { e.stopPropagation(); handleSubscribeClick(plan.id); }} 
+          disabled={isLoading && selectedPlan === plan.id} 
+          className={`w-full py-2.5 md:py-3.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${isPopular && isCenter ? 'bg-[#87D039] text-black hover:bg-[#9AE045]' : isBest && isCenter ? 'bg-yellow-400 text-black hover:bg-yellow-300' : isCenter ? 'bg-zinc-900 text-white hover:bg-black' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
+        >
+          {isLoading && selectedPlan === plan.id ? '처리 중...' : plan.buttonText}
+        </button>
+      </div>
+    );
+  };
+
   return (
     <section id="pricing" className="py-12 md:py-24 bg-zinc-50 overflow-hidden">
       <div className="max-w-[1200px] mx-auto px-4 md:px-6">
@@ -551,30 +631,9 @@ export default function Pricing() {
                   else if (diff === 2) style = { transform: 'translateX(130%) scale(0.7)', opacity: 0, zIndex: 10 };
                   else style = { transform: 'translateX(0) scale(0.5)', opacity: 0, zIndex: 0 };
                   const isCenter = idx === currentSlide;
-                  const isBest = (pack as any).best;
                   return (
                     <div key={idx} className="absolute w-[260px] md:w-[320px] transition-all duration-500 ease-out cursor-pointer" style={style} onClick={() => setCurrentSlide(idx)}>
-                      <div className={`p-5 md:p-8 rounded-2xl md:rounded-3xl flex flex-col relative ${pack.popular && isCenter ? 'bg-zinc-900 text-white shadow-2xl' : isBest && isCenter ? 'bg-gradient-to-br from-purple-600 to-purple-800 text-white shadow-2xl' : isCenter ? 'bg-white border-2 border-zinc-900 shadow-2xl' : 'bg-white border border-zinc-200 shadow-lg'}`}>
-                        {pack.discount > 0 && isCenter && !pack.popular && !isBest && (<div className="absolute -top-3 -right-2 bg-red-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-full shadow-lg">{pack.discount}% OFF</div>)}
-                        {pack.popular && (<div className="flex justify-center mb-2"><span className="bg-[#87D039] text-black text-[10px] font-bold px-3 py-1 rounded-full">🔥 가장 인기</span></div>)}
-                        {isBest && (<div className="flex justify-center mb-2"><span className="bg-yellow-400 text-black text-[10px] font-bold px-3 py-1 rounded-full">💎 최고 가성비</span></div>)}
-                        <div className="text-center mb-3 md:mb-4">
-                          <h3 className="text-lg md:text-xl font-bold mb-1">{pack.name}</h3>
-                          <p className={`text-xs ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}>{pack.desc}</p>
-                        </div>
-                        <div className="text-center mb-3 md:mb-4">
-                          <div className="text-2xl md:text-4xl font-bold mb-1">₩{formatPrice(pack.price)}</div>
-                          <p className={`text-xs ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}>{formatPrice(pack.credits)} 크레딧</p>
-                          <p className={`text-[10px] mt-1 ${(pack.popular || isBest) && isCenter ? 'text-zinc-400' : 'text-zinc-400'}`}>크레딧당 ₩{pack.pricePerCredit}{pack.discount > 0 && (<span className={`ml-1 font-bold ${(pack.popular || isBest) && isCenter ? 'text-[#87D039]' : 'text-red-500'}`}>({pack.discount}% 할인)</span>)}</p>
-                        </div>
-                        <div className={`rounded-xl p-3 mb-3 md:mb-4 ${(pack.popular || isBest) && isCenter ? 'bg-white/10' : 'bg-zinc-50'}`}>
-                          <div className="space-y-1.5 text-xs md:text-sm">
-                            <div className="flex items-center justify-between"><span className={`flex items-center gap-1.5 ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}><Zap size={10} /> Standard</span><span className="font-bold">{formatPrice(pack.flashCount)}회</span></div>
-                            <div className="flex items-center justify-between"><span className={`flex items-center gap-1.5 ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}><Crown size={10} /> Premium</span><span className="font-bold">{formatPrice(pack.proCount)}회</span></div>
-                          </div>
-                        </div>
-                        <button onClick={(e) => { e.stopPropagation(); handlePayment(pack.id); }} disabled={isLoading && selectedPlan === pack.id} className={`w-full py-2.5 md:py-3.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${pack.popular && isCenter ? 'bg-[#87D039] text-black hover:bg-[#9AE045]' : isBest && isCenter ? 'bg-yellow-400 text-black hover:bg-yellow-300' : isCenter ? 'bg-zinc-900 text-white hover:bg-black' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}>{isLoading && selectedPlan === pack.id ? '처리 중...' : '구매하기'}</button>
-                      </div>
+                      {renderCreditCard(pack, idx, isCenter)}
                     </div>
                   );
                 })}
@@ -663,8 +722,10 @@ export default function Pricing() {
               <span className={`text-xs font-medium flex items-center gap-1.5 ${isAnnual ? 'text-zinc-900' : 'text-zinc-400'}`}>연간 <span className="text-[#87D039] text-[10px] font-bold">20% 할인</span></span>
             </div>
 
-            {/* 구독 캐러셀 - 모바일 */}
-            <div className="md:hidden relative h-[420px] mb-4" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={() => handleTouchEnd(true)}>
+            {/* 구독 캐러셀 */}
+            <div className="relative h-[420px] md:h-[520px] mb-4 md:mb-8" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={() => handleTouchEnd(true)}>
+              <button onClick={prevSubSlide} disabled={subSlide === 0} className={`hidden md:flex absolute left-4 md:left-8 top-1/2 -translate-y-1/2 w-12 h-12 bg-white border border-zinc-200 rounded-full items-center justify-center transition-all z-40 shadow-lg ${subSlide === 0 ? 'opacity-30' : 'hover:scale-110'}`}><ChevronLeft size={24} /></button>
+              <button onClick={nextSubSlide} disabled={subSlide === SUBSCRIPTION_PLANS.length - 1} className={`hidden md:flex absolute right-4 md:right-8 top-1/2 -translate-y-1/2 w-12 h-12 bg-white border border-zinc-200 rounded-full items-center justify-center transition-all z-40 shadow-lg ${subSlide === SUBSCRIPTION_PLANS.length - 1 ? 'opacity-30' : 'hover:scale-110'}`}><ChevronRight size={24} /></button>
               <div className="absolute inset-0 flex items-center justify-center">
                 {SUBSCRIPTION_PLANS.map((plan, idx) => {
                   const diff = idx - subSlide;
@@ -672,103 +733,20 @@ export default function Pricing() {
                   if (diff === 0) style = { transform: 'translateX(0) scale(1)', opacity: 1, zIndex: 30 };
                   else if (diff === -1) style = { transform: 'translateX(-70%) scale(0.85)', opacity: 0.5, zIndex: 20 };
                   else if (diff === 1) style = { transform: 'translateX(70%) scale(0.85)', opacity: 0.5, zIndex: 20 };
+                  else if (diff === -2) style = { transform: 'translateX(-130%) scale(0.7)', opacity: 0, zIndex: 10 };
+                  else if (diff === 2) style = { transform: 'translateX(130%) scale(0.7)', opacity: 0, zIndex: 10 };
                   else style = { transform: 'translateX(0) scale(0.5)', opacity: 0, zIndex: 0 };
                   const isCenter = idx === subSlide;
-                  const displayPrice = isAnnual && plan.annualPrice ? plan.annualPrice : plan.price;
-                  
                   return (
-                    <div key={plan.id} className="absolute w-[260px] transition-all duration-500 ease-out cursor-pointer" style={style} onClick={() => setSubSlide(idx)}>
-                      <div className={`p-5 md:p-8 rounded-2xl md:rounded-3xl flex flex-col relative ${plan.recommended && isCenter ? 'bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-2xl' : isCenter ? 'bg-white border-2 border-zinc-900 shadow-2xl' : 'bg-white border border-zinc-200 shadow-lg'}`}>
-                        {plan.recommended && isCenter && <div className="absolute -top-3 left-1/2 -translate-x-1/2"><span className="bg-amber-400 text-black text-[10px] font-bold px-4 py-1 rounded-full">추천</span></div>}
-                        <div className="text-center mb-3 md:mb-4 mt-2">
-                          <h3 className="text-lg md:text-xl font-bold mb-1">{plan.name}</h3>
-                          <p className={`text-xs ${plan.recommended && isCenter ? 'text-blue-100' : 'text-zinc-500'}`}>{plan.desc}</p>
-                        </div>
-                        <div className="text-center mb-3 md:mb-4">
-                          <div className="text-2xl md:text-4xl font-bold mb-1">₩{formatPrice(displayPrice)}{displayPrice > 0 && <span className={`text-sm font-normal ${plan.recommended && isCenter ? 'text-blue-100' : 'text-zinc-400'}`}>/월</span>}</div>
-                          <p className={`text-xs ${plan.recommended && isCenter ? 'text-blue-100' : 'text-zinc-500'}`}>{plan.credits}</p>
-                          {isAnnual && displayPrice > 0 && <p className="text-[10px] text-[#87D039] mt-1">연간 결제 시 20% 할인</p>}
-                        </div>
-                        <div className={`rounded-xl p-3 mb-3 md:mb-4 flex-1 ${plan.recommended && isCenter ? 'bg-white/10' : 'bg-zinc-50'}`}>
-                          <div className="space-y-1.5 text-xs md:text-sm">
-                            {plan.features.map((f, i) => (
-                              <div key={i} className="flex items-center gap-2">
-                                {f.included ? <Check size={12} className="text-[#87D039]" /> : <X size={12} className={plan.recommended && isCenter ? 'text-blue-200/50' : 'text-zinc-300'} />}
-                                <span className={f.included ? (plan.recommended && isCenter ? 'text-white' : 'text-zinc-700') : (plan.recommended && isCenter ? 'text-blue-200/50' : 'text-zinc-400')}>{f.text}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); handleSubscribeClick(plan.id); }} 
-                          disabled={isLoading && selectedPlan === plan.id} 
-                          className={`w-full py-2.5 md:py-3.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${plan.recommended && isCenter ? 'bg-white text-blue-600 hover:bg-blue-50' : isCenter ? 'bg-zinc-900 text-white hover:bg-black' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
-                        >
-                          {isLoading && selectedPlan === plan.id ? '처리 중...' : plan.buttonText}
-                        </button>
-                      </div>
+                    <div key={plan.id} className="absolute w-[260px] md:w-[320px] transition-all duration-500 ease-out cursor-pointer" style={style} onClick={() => setSubSlide(idx)}>
+                      {renderSubscriptionCard(plan, idx, isCenter)}
                     </div>
                   );
                 })}
               </div>
             </div>
             <p className="text-center text-xs text-zinc-400 mb-3 md:hidden">← 좌우로 스와이프하세요 →</p>
-            <div className="flex justify-center gap-1.5 mb-6 md:hidden">
-              {SUBSCRIPTION_PLANS.map((_, idx) => (<button key={idx} onClick={() => setSubSlide(idx)} className={`h-1.5 rounded-full transition-all duration-300 ${subSlide === idx ? 'bg-zinc-900 w-6' : 'bg-zinc-300 w-1.5'}`} />))}
-            </div>
-
-            {/* 구독 캐러셀 - PC */}
-            <div className="hidden md:block relative h-[520px] mb-8">
-              <button onClick={prevSubSlide} disabled={subSlide === 0} className={`absolute left-4 md:left-8 top-1/2 -translate-y-1/2 w-12 h-12 bg-white border border-zinc-200 rounded-full flex items-center justify-center transition-all z-40 shadow-lg ${subSlide === 0 ? 'opacity-30' : 'hover:scale-110'}`}><ChevronLeft size={24} /></button>
-              <button onClick={nextSubSlide} disabled={subSlide === SUBSCRIPTION_PLANS.length - 1} className={`absolute right-4 md:right-8 top-1/2 -translate-y-1/2 w-12 h-12 bg-white border border-zinc-200 rounded-full flex items-center justify-center transition-all z-40 shadow-lg ${subSlide === SUBSCRIPTION_PLANS.length - 1 ? 'opacity-30' : 'hover:scale-110'}`}><ChevronRight size={24} /></button>
-              <div className="absolute inset-0 flex items-center justify-center">
-                {SUBSCRIPTION_PLANS.map((plan, idx) => {
-                  const diff = idx - subSlide;
-                  let style: React.CSSProperties;
-                  if (diff === 0) style = { transform: 'translateX(0) scale(1)', opacity: 1, zIndex: 30 };
-                  else if (diff === -1) style = { transform: 'translateX(-70%) scale(0.85)', opacity: 0.5, zIndex: 20 };
-                  else if (diff === 1) style = { transform: 'translateX(70%) scale(0.85)', opacity: 0.5, zIndex: 20 };
-                  else style = { transform: 'translateX(0) scale(0.5)', opacity: 0, zIndex: 0 };
-                  const isCenter = idx === subSlide;
-                  const displayPrice = isAnnual && plan.annualPrice ? plan.annualPrice : plan.price;
-                  
-                  return (
-                    <div key={plan.id} className="absolute w-[320px] transition-all duration-500 ease-out cursor-pointer" style={style} onClick={() => setSubSlide(idx)}>
-                      <div className={`p-8 rounded-3xl flex flex-col relative ${plan.recommended && isCenter ? 'bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-2xl' : isCenter ? 'bg-white border-2 border-zinc-900 shadow-2xl' : 'bg-white border border-zinc-200 shadow-lg'}`}>
-                        {plan.recommended && isCenter && <div className="absolute -top-3 left-1/2 -translate-x-1/2"><span className="bg-amber-400 text-black text-[10px] font-bold px-4 py-1 rounded-full">추천</span></div>}
-                        <div className="text-center mb-4 mt-2">
-                          <h3 className="text-xl font-bold mb-1">{plan.name}</h3>
-                          <p className={`text-xs ${plan.recommended && isCenter ? 'text-blue-100' : 'text-zinc-500'}`}>{plan.desc}</p>
-                        </div>
-                        <div className="text-center mb-4">
-                          <div className="text-4xl font-bold mb-1">₩{formatPrice(displayPrice)}{displayPrice > 0 && <span className={`text-base font-normal ${plan.recommended && isCenter ? 'text-blue-100' : 'text-zinc-400'}`}>/월</span>}</div>
-                          <p className={`text-sm ${plan.recommended && isCenter ? 'text-blue-100' : 'text-zinc-500'}`}>{plan.credits}</p>
-                          {isAnnual && displayPrice > 0 && <p className="text-[10px] text-[#87D039] mt-1">연간 결제 시 20% 할인</p>}
-                        </div>
-                        <div className={`rounded-xl p-4 mb-4 flex-1 ${plan.recommended && isCenter ? 'bg-white/10' : 'bg-zinc-50'}`}>
-                          <div className="space-y-2 text-sm">
-                            {plan.features.map((f, i) => (
-                              <div key={i} className="flex items-center gap-2">
-                                {f.included ? <Check size={14} className="text-[#87D039]" /> : <X size={14} className={plan.recommended && isCenter ? 'text-blue-200/50' : 'text-zinc-300'} />}
-                                <span className={f.included ? (plan.recommended && isCenter ? 'text-white' : 'text-zinc-700') : (plan.recommended && isCenter ? 'text-blue-200/50' : 'text-zinc-400')}>{f.text}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); handleSubscribeClick(plan.id); }} 
-                          disabled={isLoading && selectedPlan === plan.id} 
-                          className={`w-full py-3.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${plan.recommended && isCenter ? 'bg-white text-blue-600 hover:bg-blue-50' : isCenter ? 'bg-zinc-900 text-white hover:bg-black' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
-                        >
-                          {isLoading && selectedPlan === plan.id ? '처리 중...' : plan.buttonText}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="hidden md:flex justify-center gap-1.5 mb-10">
+            <div className="flex justify-center gap-1.5 mb-6 md:mb-10">
               {SUBSCRIPTION_PLANS.map((_, idx) => (<button key={idx} onClick={() => setSubSlide(idx)} className={`h-1.5 rounded-full transition-all duration-300 ${subSlide === idx ? 'bg-zinc-900 w-6' : 'bg-zinc-300 w-1.5'}`} />))}
             </div>
 
