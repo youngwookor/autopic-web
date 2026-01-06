@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { CreditCard, Coins, Check, X, Zap, Crown, Monitor, Globe, ChevronLeft, ChevronRight, ChevronDown, AlertCircle } from 'lucide-react';
+import { CreditCard, Coins, Check, X, Zap, Crown, Monitor, Globe, ChevronLeft, ChevronRight, ChevronDown, AlertCircle, Sparkles, Gift } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@/lib/store';
 
@@ -40,7 +40,7 @@ const SUBSCRIPTION_PLANS = [
     name: 'Starter', 
     desc: '가장 인기', 
     price: 29000, 
-    annualPrice: 24650,  // 15% 할인
+    annualPrice: 24650,
     credits: '월 100 크레딧', 
     monthlyCredits: 100,
     features: [
@@ -58,7 +58,7 @@ const SUBSCRIPTION_PLANS = [
     name: 'Pro', 
     desc: '전문 셀러용', 
     price: 79000, 
-    annualPrice: 67150,  // 15% 할인
+    annualPrice: 67150,
     credits: '월 300 크레딧', 
     monthlyCredits: 300,
     features: [
@@ -152,8 +152,8 @@ export default function Pricing() {
   const { user, isAuthenticated } = useAuthStore();
   const [pricingMode, setPricingMode] = useState<'subscription' | 'credits'>('credits');
   const [isAnnual, setIsAnnual] = useState(false);
-  const [currentSlide, setCurrentSlide] = useState(2); // Plus가 기본
-  const [subSlide, setSubSlide] = useState(1); // Starter가 기본 (가장 인기)
+  const [currentSlide, setCurrentSlide] = useState(2);
+  const [subSlide, setSubSlide] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [touchStart, setTouchStart] = useState(0);
@@ -162,9 +162,13 @@ export default function Pricing() {
   const [desktopDetailOpen, setDesktopDetailOpen] = useState(false);
   const [sdkReady, setSdkReady] = useState(false);
   
-  // 결제 확인 모달 상태
+  // 구독 결제 확인 모달 상태
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<typeof SUBSCRIPTION_PLANS[0] | null>(null);
+  
+  // 크레딧 결제 확인 모달 상태
+  const [showCreditModal, setShowCreditModal] = useState(false);
+  const [pendingCreditPlan, setPendingCreditPlan] = useState<typeof CREDIT_PACKAGES[0] | null>(null);
 
   const formatPrice = (price: number) => new Intl.NumberFormat('ko-KR').format(price);
   
@@ -203,8 +207,8 @@ export default function Pricing() {
     setTouchEnd(0);
   };
 
-  // 크레딧 충전 결제
-  const handlePayment = async (planId: string) => {
+  // 크레딧 충전 버튼 클릭 → 확인 모달 표시
+  const handleCreditClick = (planId: string) => {
     if (!isAuthenticated || !user) {
       toast.error('로그인이 필요합니다');
       router.push('/login');
@@ -214,8 +218,18 @@ export default function Pricing() {
     const plan = CREDIT_PACKAGES.find(p => p.id === planId);
     if (!plan) return;
     
+    // 확인 모달 표시
+    setPendingCreditPlan(plan);
+    setShowCreditModal(true);
+  };
+
+  // 크레딧 결제 진행
+  const handleConfirmCreditPayment = async () => {
+    if (!pendingCreditPlan || !user) return;
+    
+    setShowCreditModal(false);
     setIsLoading(true);
-    setSelectedPlan(planId);
+    setSelectedPlan(pendingCreditPlan.id);
     
     try {
       if (!window.AUTHNICE) {
@@ -230,7 +244,7 @@ export default function Pricing() {
       const createResponse = await fetch(`${API_URL}/api/payment/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.id, plan: planId, order_id: orderId }),
+        body: JSON.stringify({ user_id: user.id, plan: pendingCreditPlan.id, order_id: orderId }),
       });
       
       if (!createResponse.ok) throw new Error('결제 생성 실패');
@@ -244,10 +258,10 @@ export default function Pricing() {
         clientId: config.client_id,
         method: 'card',
         orderId: orderId,
-        amount: plan.price,
-        goodsName: `Autopic ${plan.name} - ${formatPrice(plan.credits)}크레딧`,
+        amount: pendingCreditPlan.price,
+        goodsName: `Autopic ${pendingCreditPlan.name} - ${formatPrice(pendingCreditPlan.credits)}크레딧`,
         returnUrl: returnUrl,
-        mallReserved: JSON.stringify({ plan: planId, userId: user.id }),
+        mallReserved: JSON.stringify({ plan: pendingCreditPlan.id, userId: user.id }),
         fnError: (result) => {
           if (!result.errorMsg?.includes('취소') && !result.msg?.includes('취소')) {
             toast.error(result.msg || result.errorMsg || '결제 중 오류가 발생했습니다');
@@ -289,12 +303,11 @@ export default function Pricing() {
       return;
     }
 
-    // 확인 모달 표시
     setPendingPlan(plan);
     setShowPaymentModal(true);
   };
 
-  // 모달에서 결제 진행 확인
+  // 구독 결제 진행
   const handleConfirmPayment = async () => {
     if (!pendingPlan || !user) return;
 
@@ -317,16 +330,13 @@ export default function Pricing() {
       }
       const config = await configResponse.json();
 
-      // 결제 금액 계산
       let amount: number;
       let goodsName: string;
       
       if (isAnnual) {
-        // 연간: 월 할인가 × 12개월
         amount = (pendingPlan.annualPrice || pendingPlan.price) * 12;
         goodsName = `Autopic ${pendingPlan.name} 구독 (연간)`;
       } else {
-        // 월간: 정가
         amount = pendingPlan.price;
         goodsName = `Autopic ${pendingPlan.name} 구독 (월간)`;
       }
@@ -363,7 +373,137 @@ export default function Pricing() {
     }
   };
 
-  // 결제 확인 모달 컴포넌트
+  // 크레딧 결제 확인 모달 컴포넌트
+  const CreditPaymentModal = () => {
+    if (!showCreditModal || !pendingCreditPlan) return null;
+
+    const pack = pendingCreditPlan;
+    const isBest = (pack as any).best;
+    const isPopular = pack.popular;
+    
+    // 테마 색상 결정
+    let themeColor = 'blue';
+    let bgGradient = 'from-blue-600 to-blue-700';
+    let iconBg = 'bg-blue-100';
+    let iconColor = 'text-blue-600';
+    let accentColor = 'text-blue-600';
+    let buttonBg = 'bg-blue-600 hover:bg-blue-700';
+    
+    if (isPopular) {
+      themeColor = 'green';
+      bgGradient = 'from-zinc-800 to-zinc-900';
+      iconBg = 'bg-[#87D039]/20';
+      iconColor = 'text-[#87D039]';
+      accentColor = 'text-[#87D039]';
+      buttonBg = 'bg-[#87D039] hover:bg-[#9AE045] text-black';
+    } else if (isBest) {
+      themeColor = 'purple';
+      bgGradient = 'from-purple-600 to-purple-700';
+      iconBg = 'bg-purple-100';
+      iconColor = 'text-purple-600';
+      accentColor = 'text-purple-600';
+      buttonBg = 'bg-purple-600 hover:bg-purple-700';
+    }
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl">
+          {/* 헤더 - 테마 컬러 */}
+          <div className={`bg-gradient-to-r ${bgGradient} p-5 text-white`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  {isPopular && <span className="text-[10px] font-bold bg-[#87D039] text-black px-2 py-0.5 rounded-full">🔥 가장 인기</span>}
+                  {isBest && <span className="text-[10px] font-bold bg-yellow-400 text-black px-2 py-0.5 rounded-full">💎 최고 가성비</span>}
+                </div>
+                <h3 className="text-xl font-bold">{pack.name} 패키지</h3>
+                <p className="text-sm opacity-80">{pack.desc}</p>
+              </div>
+              <div className={`w-12 h-12 ${isPopular ? 'bg-white/20' : 'bg-white/20'} rounded-xl flex items-center justify-center`}>
+                <Coins size={24} />
+              </div>
+            </div>
+          </div>
+
+          {/* 본문 */}
+          <div className="p-5">
+            {/* 크레딧 정보 */}
+            <div className="bg-zinc-50 rounded-xl p-4 mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-zinc-500 text-sm">충전 크레딧</span>
+                <div className="flex items-center gap-2">
+                  <Sparkles size={16} className={accentColor} />
+                  <span className="text-2xl font-bold">{formatPrice(pack.credits)}</span>
+                  <span className="text-zinc-400 text-sm">크레딧</span>
+                </div>
+              </div>
+              
+              <div className="border-t border-zinc-200 pt-3 space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-1.5 text-zinc-500">
+                    <Zap size={14} className="text-yellow-500" /> Standard 이미지
+                  </span>
+                  <span className="font-bold">{formatPrice(pack.flashCount)}회</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-1.5 text-zinc-500">
+                    <Crown size={14} className="text-purple-500" /> Premium 이미지
+                  </span>
+                  <span className="font-bold">{formatPrice(pack.proCount)}회</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 결제 정보 */}
+            <div className="bg-zinc-50 rounded-xl p-4 mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-zinc-500 text-sm">크레딧당 가격</span>
+                <div className="text-right">
+                  <span className="font-bold">₩{pack.pricePerCredit}</span>
+                  {pack.discount > 0 && (
+                    <span className={`ml-1.5 text-xs font-bold ${accentColor}`}>({pack.discount}% 할인)</span>
+                  )}
+                </div>
+              </div>
+              <div className="border-t border-zinc-200 pt-3 flex items-center justify-between">
+                <span className="text-zinc-500">총 결제 금액</span>
+                <span className={`text-2xl font-bold ${accentColor}`}>₩{formatPrice(pack.price)}</span>
+              </div>
+            </div>
+
+            {/* 안내 사항 */}
+            <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-5">
+              <div className="flex gap-2">
+                <Gift size={16} className="text-green-600 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-green-700">
+                  <p className="font-bold mb-1">크레딧 영구 보관</p>
+                  <p>충전된 크레딧은 만료 없이 영구 보관됩니다. 필요할 때 편하게 사용하세요!</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 버튼 */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowCreditModal(false)}
+                className="flex-1 py-3 rounded-xl font-bold text-zinc-600 bg-zinc-100 hover:bg-zinc-200 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleConfirmCreditPayment}
+                className={`flex-1 py-3 rounded-xl font-bold text-white ${buttonBg} transition-colors`}
+              >
+                결제하기
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // 구독 결제 확인 모달 컴포넌트
   const PaymentConfirmModal = () => {
     if (!showPaymentModal || !pendingPlan) return null;
 
@@ -451,9 +591,10 @@ export default function Pricing() {
     );
   };
 
-  // 통일된 카드 높이 (크레딧/구독 공용)
+  // 통일된 카드 크기
   const CARD_HEIGHT = "h-[380px] md:h-[420px]";
   const CARD_WIDTH = "w-[260px] md:w-[300px]";
+  const CAROUSEL_HEIGHT = "h-[440px] md:h-[480px]";
 
   // 크레딧 카드 렌더링 함수
   const renderCreditCard = (pack: typeof CREDIT_PACKAGES[0], idx: number, isCenter: boolean) => {
@@ -478,7 +619,7 @@ export default function Pricing() {
             <div className="flex items-center justify-between"><span className={`flex items-center gap-1.5 ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}><Crown size={12} /> Premium</span><span className="font-bold">{formatPrice(pack.proCount)}회</span></div>
           </div>
         </div>
-        <button onClick={(e) => { e.stopPropagation(); handlePayment(pack.id); }} disabled={isLoading && selectedPlan === pack.id} className={`w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-50 mt-auto ${pack.popular && isCenter ? 'bg-[#87D039] text-black hover:bg-[#9AE045]' : isBest && isCenter ? 'bg-yellow-400 text-black hover:bg-yellow-300' : isCenter ? 'bg-zinc-900 text-white hover:bg-black' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}>{isLoading && selectedPlan === pack.id ? '처리 중...' : '구매하기'}</button>
+        <button onClick={(e) => { e.stopPropagation(); handleCreditClick(pack.id); }} disabled={isLoading && selectedPlan === pack.id} className={`w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-50 mt-auto ${pack.popular && isCenter ? 'bg-[#87D039] text-black hover:bg-[#9AE045]' : isBest && isCenter ? 'bg-yellow-400 text-black hover:bg-yellow-300' : isCenter ? 'bg-zinc-900 text-white hover:bg-black' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}>{isLoading && selectedPlan === pack.id ? '처리 중...' : '구매하기'}</button>
       </div>
     );
   };
@@ -525,9 +666,6 @@ export default function Pricing() {
       </div>
     );
   };
-
-  // 통일된 캐러셀 높이
-  const CAROUSEL_HEIGHT = "h-[440px] md:h-[480px]";
 
   return (
     <section id="pricing" className="py-12 md:py-24 bg-zinc-50 overflow-hidden">
@@ -784,7 +922,10 @@ export default function Pricing() {
         </div>
       </div>
 
-      {/* 결제 확인 모달 */}
+      {/* 크레딧 결제 확인 모달 */}
+      <CreditPaymentModal />
+      
+      {/* 구독 결제 확인 모달 */}
       <PaymentConfirmModal />
     </section>
   );
