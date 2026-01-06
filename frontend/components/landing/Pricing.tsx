@@ -25,8 +25,6 @@ const SUBSCRIPTION_PLANS = [
     annualPrice: 0,
     credits: '5 크레딧 (1회)', 
     monthlyCredits: 5,
-    pricePerCredit: 0,
-    discount: 0,
     features: [
       { text: '웹 스튜디오', included: true }, 
       { text: 'Standard/Premium', included: true }, 
@@ -42,11 +40,9 @@ const SUBSCRIPTION_PLANS = [
     name: 'Starter', 
     desc: '가장 인기', 
     price: 29000, 
-    annualPrice: 23200,
+    annualPrice: 24650,  // 15% 할인
     credits: '월 100 크레딧', 
     monthlyCredits: 100,
-    pricePerCredit: 290,
-    discount: 0,
     features: [
       { text: '웹 스튜디오', included: true }, 
       { text: 'Standard/Premium', included: true }, 
@@ -58,15 +54,13 @@ const SUBSCRIPTION_PLANS = [
     best: false
   },
   { 
-    id: 'basic', 
-    name: 'Basic', 
-    desc: '최고 가성비', 
+    id: 'pro', 
+    name: 'Pro', 
+    desc: '전문 셀러용', 
     price: 79000, 
-    annualPrice: 63200,
+    annualPrice: 67150,  // 15% 할인
     credits: '월 300 크레딧', 
     monthlyCredits: 300,
-    pricePerCredit: 263,
-    discount: 9,
     features: [
       { text: '웹 스튜디오', included: true }, 
       { text: 'Standard/Premium', included: true }, 
@@ -409,7 +403,7 @@ export default function Pricing() {
                     <span className="text-zinc-500">총 결제 금액</span>
                     <div className="text-right">
                       <span className="text-xl font-bold text-blue-600">₩{formatPrice(totalAmount)}</span>
-                      <div className="text-xs text-green-600 font-medium">20% 할인 적용</div>
+                      <div className="text-xs text-green-600 font-medium">15% 할인 적용</div>
                     </div>
                   </div>
                 </>
@@ -457,30 +451,34 @@ export default function Pricing() {
     );
   };
 
-  // 공통 카드 렌더링 함수 (크레딧/구독 공용)
+  // 통일된 카드 높이 (크레딧/구독 공용)
+  const CARD_HEIGHT = "h-[380px] md:h-[420px]";
+  const CARD_WIDTH = "w-[260px] md:w-[300px]";
+
+  // 크레딧 카드 렌더링 함수
   const renderCreditCard = (pack: typeof CREDIT_PACKAGES[0], idx: number, isCenter: boolean) => {
     const isBest = (pack as any).best;
     return (
-      <div className={`p-5 md:p-8 rounded-2xl md:rounded-3xl flex flex-col relative ${pack.popular && isCenter ? 'bg-zinc-900 text-white shadow-2xl' : isBest && isCenter ? 'bg-gradient-to-br from-purple-600 to-purple-800 text-white shadow-2xl' : isCenter ? 'bg-white border-2 border-zinc-900 shadow-2xl' : 'bg-white border border-zinc-200 shadow-lg'}`}>
+      <div className={`${CARD_HEIGHT} p-5 md:p-6 rounded-2xl md:rounded-3xl flex flex-col relative ${pack.popular && isCenter ? 'bg-zinc-900 text-white shadow-2xl' : isBest && isCenter ? 'bg-gradient-to-br from-purple-600 to-purple-800 text-white shadow-2xl' : isCenter ? 'bg-white border-2 border-zinc-900 shadow-2xl' : 'bg-white border border-zinc-200 shadow-lg'}`}>
         {pack.discount > 0 && isCenter && !pack.popular && !isBest && (<div className="absolute -top-3 -right-2 bg-red-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-full shadow-lg">{pack.discount}% OFF</div>)}
         {pack.popular && (<div className="flex justify-center mb-2"><span className="bg-[#87D039] text-black text-[10px] font-bold px-3 py-1 rounded-full">🔥 가장 인기</span></div>)}
         {isBest && (<div className="flex justify-center mb-2"><span className="bg-yellow-400 text-black text-[10px] font-bold px-3 py-1 rounded-full">💎 최고 가성비</span></div>)}
-        <div className="text-center mb-3 md:mb-4">
+        <div className="text-center mb-3">
           <h3 className="text-lg md:text-xl font-bold mb-1">{pack.name}</h3>
           <p className={`text-xs ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}>{pack.desc}</p>
         </div>
-        <div className="text-center mb-3 md:mb-4">
-          <div className="text-2xl md:text-4xl font-bold mb-1">₩{formatPrice(pack.price)}</div>
+        <div className="text-center mb-3">
+          <div className="text-2xl md:text-3xl font-bold mb-1">₩{formatPrice(pack.price)}</div>
           <p className={`text-xs ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}>{formatPrice(pack.credits)} 크레딧</p>
           <p className={`text-[10px] mt-1 ${(pack.popular || isBest) && isCenter ? 'text-zinc-400' : 'text-zinc-400'}`}>크레딧당 ₩{pack.pricePerCredit}{pack.discount > 0 && (<span className={`ml-1 font-bold ${(pack.popular || isBest) && isCenter ? 'text-[#87D039]' : 'text-red-500'}`}>({pack.discount}% 할인)</span>)}</p>
         </div>
-        <div className={`rounded-xl p-3 mb-3 md:mb-4 ${(pack.popular || isBest) && isCenter ? 'bg-white/10' : 'bg-zinc-50'}`}>
-          <div className="space-y-1.5 text-xs md:text-sm">
-            <div className="flex items-center justify-between"><span className={`flex items-center gap-1.5 ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}><Zap size={10} /> Standard</span><span className="font-bold">{formatPrice(pack.flashCount)}회</span></div>
-            <div className="flex items-center justify-between"><span className={`flex items-center gap-1.5 ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}><Crown size={10} /> Premium</span><span className="font-bold">{formatPrice(pack.proCount)}회</span></div>
+        <div className={`rounded-xl p-3 mb-3 flex-1 ${(pack.popular || isBest) && isCenter ? 'bg-white/10' : 'bg-zinc-50'}`}>
+          <div className="space-y-2 text-xs md:text-sm">
+            <div className="flex items-center justify-between"><span className={`flex items-center gap-1.5 ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}><Zap size={12} /> Standard</span><span className="font-bold">{formatPrice(pack.flashCount)}회</span></div>
+            <div className="flex items-center justify-between"><span className={`flex items-center gap-1.5 ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}><Crown size={12} /> Premium</span><span className="font-bold">{formatPrice(pack.proCount)}회</span></div>
           </div>
         </div>
-        <button onClick={(e) => { e.stopPropagation(); handlePayment(pack.id); }} disabled={isLoading && selectedPlan === pack.id} className={`w-full py-2.5 md:py-3.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${pack.popular && isCenter ? 'bg-[#87D039] text-black hover:bg-[#9AE045]' : isBest && isCenter ? 'bg-yellow-400 text-black hover:bg-yellow-300' : isCenter ? 'bg-zinc-900 text-white hover:bg-black' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}>{isLoading && selectedPlan === pack.id ? '처리 중...' : '구매하기'}</button>
+        <button onClick={(e) => { e.stopPropagation(); handlePayment(pack.id); }} disabled={isLoading && selectedPlan === pack.id} className={`w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-50 mt-auto ${pack.popular && isCenter ? 'bg-[#87D039] text-black hover:bg-[#9AE045]' : isBest && isCenter ? 'bg-yellow-400 text-black hover:bg-yellow-300' : isCenter ? 'bg-zinc-900 text-white hover:bg-black' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}>{isLoading && selectedPlan === pack.id ? '처리 중...' : '구매하기'}</button>
       </div>
     );
   };
@@ -492,26 +490,26 @@ export default function Pricing() {
     const isPopular = plan.popular;
     
     return (
-      <div className={`p-5 md:p-8 rounded-2xl md:rounded-3xl flex flex-col relative ${isPopular && isCenter ? 'bg-zinc-900 text-white shadow-2xl' : isBest && isCenter ? 'bg-gradient-to-br from-purple-600 to-purple-800 text-white shadow-2xl' : isCenter ? 'bg-white border-2 border-zinc-900 shadow-2xl' : 'bg-white border border-zinc-200 shadow-lg'}`}>
+      <div className={`${CARD_HEIGHT} p-5 md:p-6 rounded-2xl md:rounded-3xl flex flex-col relative ${isPopular && isCenter ? 'bg-zinc-900 text-white shadow-2xl' : isBest && isCenter ? 'bg-gradient-to-br from-purple-600 to-purple-800 text-white shadow-2xl' : isCenter ? 'bg-white border-2 border-zinc-900 shadow-2xl' : 'bg-white border border-zinc-200 shadow-lg'}`}>
         {isPopular && (<div className="flex justify-center mb-2"><span className="bg-[#87D039] text-black text-[10px] font-bold px-3 py-1 rounded-full">🔥 가장 인기</span></div>)}
-        {isBest && (<div className="flex justify-center mb-2"><span className="bg-yellow-400 text-black text-[10px] font-bold px-3 py-1 rounded-full">💎 최고 가성비</span></div>)}
-        <div className="text-center mb-3 md:mb-4">
+        {isBest && (<div className="flex justify-center mb-2"><span className="bg-yellow-400 text-black text-[10px] font-bold px-3 py-1 rounded-full">💎 전문 셀러 추천</span></div>)}
+        <div className="text-center mb-3">
           <h3 className="text-lg md:text-xl font-bold mb-1">{plan.name}</h3>
           <p className={`text-xs ${(isPopular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}>{plan.desc}</p>
         </div>
-        <div className="text-center mb-3 md:mb-4">
-          <div className="text-2xl md:text-4xl font-bold mb-1">
+        <div className="text-center mb-3">
+          <div className="text-2xl md:text-3xl font-bold mb-1">
             {displayPrice > 0 ? `₩${formatPrice(displayPrice)}` : '₩0'}
-            {displayPrice > 0 && <span className={`text-sm md:text-base font-normal ${(isPopular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-400'}`}>/월</span>}
+            {displayPrice > 0 && <span className={`text-sm font-normal ${(isPopular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-400'}`}>/월</span>}
           </div>
           <p className={`text-xs ${(isPopular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}>{plan.credits}</p>
-          {isAnnual && displayPrice > 0 && <p className="text-[10px] text-[#87D039] mt-1 font-bold">연간 결제 시 20% 할인</p>}
+          {isAnnual && displayPrice > 0 && <p className="text-[10px] text-[#87D039] mt-1 font-bold">연간 결제 시 15% 할인</p>}
         </div>
-        <div className={`rounded-xl p-3 mb-3 md:mb-4 flex-1 ${(isPopular || isBest) && isCenter ? 'bg-white/10' : 'bg-zinc-50'}`}>
-          <div className="space-y-1.5 text-xs md:text-sm">
+        <div className={`rounded-xl p-3 mb-3 flex-1 ${(isPopular || isBest) && isCenter ? 'bg-white/10' : 'bg-zinc-50'}`}>
+          <div className="space-y-2 text-xs md:text-sm">
             {plan.features.map((f, i) => (
               <div key={i} className="flex items-center gap-2">
-                {f.included ? <Check size={12} className="text-[#87D039]" /> : <X size={12} className={(isPopular || isBest) && isCenter ? 'text-zinc-500' : 'text-zinc-300'} />}
+                {f.included ? <Check size={14} className="text-[#87D039]" /> : <X size={14} className={(isPopular || isBest) && isCenter ? 'text-zinc-500' : 'text-zinc-300'} />}
                 <span className={f.included ? ((isPopular || isBest) && isCenter ? 'text-white' : 'text-zinc-700') : ((isPopular || isBest) && isCenter ? 'text-zinc-500' : 'text-zinc-400')}>{f.text}</span>
               </div>
             ))}
@@ -520,13 +518,16 @@ export default function Pricing() {
         <button 
           onClick={(e) => { e.stopPropagation(); handleSubscribeClick(plan.id); }} 
           disabled={isLoading && selectedPlan === plan.id} 
-          className={`w-full py-2.5 md:py-3.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${isPopular && isCenter ? 'bg-[#87D039] text-black hover:bg-[#9AE045]' : isBest && isCenter ? 'bg-yellow-400 text-black hover:bg-yellow-300' : isCenter ? 'bg-zinc-900 text-white hover:bg-black' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
+          className={`w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-50 mt-auto ${isPopular && isCenter ? 'bg-[#87D039] text-black hover:bg-[#9AE045]' : isBest && isCenter ? 'bg-yellow-400 text-black hover:bg-yellow-300' : isCenter ? 'bg-zinc-900 text-white hover:bg-black' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
         >
           {isLoading && selectedPlan === plan.id ? '처리 중...' : plan.buttonText}
         </button>
       </div>
     );
   };
+
+  // 통일된 캐러셀 높이
+  const CAROUSEL_HEIGHT = "h-[440px] md:h-[480px]";
 
   return (
     <section id="pricing" className="py-12 md:py-24 bg-zinc-50 overflow-hidden">
@@ -617,7 +618,7 @@ export default function Pricing() {
             </div>
 
             {/* 크레딧 캐러셀 */}
-            <div className="relative h-[420px] md:h-[520px] mb-4 md:mb-8" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={() => handleTouchEnd(false)}>
+            <div className={`relative ${CAROUSEL_HEIGHT} mb-4 md:mb-8`} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={() => handleTouchEnd(false)}>
               <button onClick={prevSlide} disabled={currentSlide === 0} className={`hidden md:flex absolute left-4 md:left-8 top-1/2 -translate-y-1/2 w-12 h-12 bg-white border border-zinc-200 rounded-full items-center justify-center transition-all z-40 shadow-lg ${currentSlide === 0 ? 'opacity-30' : 'hover:scale-110'}`}><ChevronLeft size={24} /></button>
               <button onClick={nextSlide} disabled={currentSlide === CREDIT_PACKAGES.length - 1} className={`hidden md:flex absolute right-4 md:right-8 top-1/2 -translate-y-1/2 w-12 h-12 bg-white border border-zinc-200 rounded-full items-center justify-center transition-all z-40 shadow-lg ${currentSlide === CREDIT_PACKAGES.length - 1 ? 'opacity-30' : 'hover:scale-110'}`}><ChevronRight size={24} /></button>
               <div className="absolute inset-0 flex items-center justify-center">
@@ -632,7 +633,7 @@ export default function Pricing() {
                   else style = { transform: 'translateX(0) scale(0.5)', opacity: 0, zIndex: 0 };
                   const isCenter = idx === currentSlide;
                   return (
-                    <div key={idx} className="absolute w-[260px] md:w-[320px] transition-all duration-500 ease-out cursor-pointer" style={style} onClick={() => setCurrentSlide(idx)}>
+                    <div key={idx} className={`absolute ${CARD_WIDTH} transition-all duration-500 ease-out cursor-pointer`} style={style} onClick={() => setCurrentSlide(idx)}>
                       {renderCreditCard(pack, idx, isCenter)}
                     </div>
                   );
@@ -719,11 +720,11 @@ export default function Pricing() {
             <div className="flex items-center justify-center gap-3 mb-4 md:mb-10">
               <span className={`text-xs font-medium ${!isAnnual ? 'text-zinc-900' : 'text-zinc-400'}`}>월간</span>
               <button onClick={() => setIsAnnual(!isAnnual)} className={`w-10 h-6 rounded-full p-1 transition-colors duration-300 ${isAnnual ? 'bg-[#87D039]' : 'bg-zinc-300'}`}><div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform duration-300 ${isAnnual ? 'translate-x-4' : 'translate-x-0'}`}></div></button>
-              <span className={`text-xs font-medium flex items-center gap-1.5 ${isAnnual ? 'text-zinc-900' : 'text-zinc-400'}`}>연간 <span className="text-[#87D039] text-[10px] font-bold">20% 할인</span></span>
+              <span className={`text-xs font-medium flex items-center gap-1.5 ${isAnnual ? 'text-zinc-900' : 'text-zinc-400'}`}>연간 <span className="text-[#87D039] text-[10px] font-bold">15% 할인</span></span>
             </div>
 
             {/* 구독 캐러셀 */}
-            <div className="relative h-[420px] md:h-[520px] mb-4 md:mb-8" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={() => handleTouchEnd(true)}>
+            <div className={`relative ${CAROUSEL_HEIGHT} mb-4 md:mb-8`} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={() => handleTouchEnd(true)}>
               <button onClick={prevSubSlide} disabled={subSlide === 0} className={`hidden md:flex absolute left-4 md:left-8 top-1/2 -translate-y-1/2 w-12 h-12 bg-white border border-zinc-200 rounded-full items-center justify-center transition-all z-40 shadow-lg ${subSlide === 0 ? 'opacity-30' : 'hover:scale-110'}`}><ChevronLeft size={24} /></button>
               <button onClick={nextSubSlide} disabled={subSlide === SUBSCRIPTION_PLANS.length - 1} className={`hidden md:flex absolute right-4 md:right-8 top-1/2 -translate-y-1/2 w-12 h-12 bg-white border border-zinc-200 rounded-full items-center justify-center transition-all z-40 shadow-lg ${subSlide === SUBSCRIPTION_PLANS.length - 1 ? 'opacity-30' : 'hover:scale-110'}`}><ChevronRight size={24} /></button>
               <div className="absolute inset-0 flex items-center justify-center">
@@ -738,7 +739,7 @@ export default function Pricing() {
                   else style = { transform: 'translateX(0) scale(0.5)', opacity: 0, zIndex: 0 };
                   const isCenter = idx === subSlide;
                   return (
-                    <div key={plan.id} className="absolute w-[260px] md:w-[320px] transition-all duration-500 ease-out cursor-pointer" style={style} onClick={() => setSubSlide(idx)}>
+                    <div key={plan.id} className={`absolute ${CARD_WIDTH} transition-all duration-500 ease-out cursor-pointer`} style={style} onClick={() => setSubSlide(idx)}>
                       {renderSubscriptionCard(plan, idx, isCenter)}
                     </div>
                   );
