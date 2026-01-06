@@ -65,7 +65,7 @@ const SUBSCRIPTION_PLANS = [
       { text: '웹 스튜디오', included: true }, 
       { text: 'Standard/Premium', included: true }, 
       { text: '우선 처리', included: true }, 
-      { text: '설치형 프로그램', included: true }
+      { text: '설치형 프로그램', included: false }
     ], 
     buttonText: '구독 시작', 
     popular: false,
