@@ -222,6 +222,7 @@ export default function Hero() {
           <h1 
             className={`text-[11vw] font-bold leading-[1.1] tracking-tight text-center mb-4 transition-all duration-700 delay-100 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}
           >
+            <span className="sr-only">오토픽 - AI 상품 이미지 자동 생성 서비스</span>
             <span className="text-zinc-900">촬영 없이</span>
             <br />
             <span className="text-[#87D039]">완벽한 사진</span>
@@ -343,6 +344,7 @@ export default function Hero() {
               <h1 
                 className={`text-6xl xl:text-7xl font-bold leading-[1.1] tracking-tight mb-6 transition-all duration-700 delay-100 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}
               >
+                <span className="sr-only">오토픽 - AI 상품 이미지 자동 생성 서비스</span>
                 <span className="text-zinc-900">촬영 없이</span>
                 <br />
                 <span className="text-[#87D039]">완벽한 사진</span>
