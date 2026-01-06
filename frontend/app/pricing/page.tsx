@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { useAuthStore, useCreditsStore } from '@/lib/store';
-import { ArrowLeft, Check, Zap, Crown, Shield, Clock, Download, ChevronLeft, ChevronRight, Globe, Monitor } from 'lucide-react';
+import { ArrowLeft, Check, Zap, Crown, Shield, Clock, Download, ChevronLeft, ChevronRight, Globe, Monitor, CreditCard, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -17,6 +17,31 @@ const CREDIT_PACKAGES = [
   { id: "plus", name: "Plus", credits: 500, price: 119000, flashCount: 500, proCount: 166, popular: true, desc: "가장 인기", pricePerCredit: 238, discount: 37 },
   { id: "mega", name: "Mega", credits: 1500, price: 349000, flashCount: 1500, proCount: 500, desc: "중대형 셀러", pricePerCredit: 233, discount: 39 },
   { id: "ultimate", name: "Ultimate", credits: 5000, price: 999000, flashCount: 5000, proCount: 1666, desc: "최대 할인", pricePerCredit: 200, discount: 47, best: true },
+];
+
+// 구독 플랜 (월간 리셋형)
+const SUBSCRIPTION_PLANS = [
+  { 
+    id: "starter", 
+    name: "Starter", 
+    credits: 100, 
+    price: 29000, 
+    flashCount: 100, 
+    proCount: 33,
+    desc: "개인 셀러",
+    features: ["매월 100 크레딧 지급", "웹 스튜디오 이용", "우선 처리"],
+  },
+  { 
+    id: "basic", 
+    name: "Basic", 
+    credits: 300, 
+    price: 99000, 
+    flashCount: 300, 
+    proCount: 100,
+    desc: "성장하는 셀러",
+    popular: true,
+    features: ["매월 300 크레딧 지급", "웹 스튜디오 이용", "설치형 프로그램", "우선 처리", "API 액세스"],
+  },
 ];
 
 // 조리개 로고
@@ -131,6 +156,7 @@ function PricingPageContent() {
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
   const [sdkReady, setSdkReady] = useState(false);
+  const [activeTab, setActiveTab] = useState<'credit' | 'subscription'>('credit');
   const sliderRef = useRef<HTMLDivElement>(null);
   const { trackViewPricing, trackInitiateCheckout } = useAnalytics();
 
@@ -149,6 +175,12 @@ function PricingPageContent() {
 
   useEffect(() => {
     const plan = searchParams.get('plan');
+    const tab = searchParams.get('tab');
+    
+    if (tab === 'subscription') {
+      setActiveTab('subscription');
+    }
+    
     if (plan) {
       const idx = CREDIT_PACKAGES.findIndex(p => p.id === plan);
       if (idx !== -1) setCurrentSlide(idx);
@@ -169,7 +201,8 @@ function PricingPageContent() {
     setTouchEnd(0);
   };
 
-  const handlePayment = async (planId: string) => {
+  // 일회성 크레딧 충전 결제
+  const handleCreditPayment = async (planId: string) => {
     if (!isAuthenticated || !user) {
       toast.error('로그인이 필요합니다');
       router.push('/login');
@@ -250,6 +283,78 @@ function PricingPageContent() {
     }
   };
 
+  // 구독 결제 (정기결제)
+  const handleSubscriptionPayment = async (planId: string) => {
+    if (!isAuthenticated || !user) {
+      toast.error('로그인이 필요합니다');
+      router.push('/login');
+      return;
+    }
+
+    const plan = SUBSCRIPTION_PLANS.find(p => p.id === planId);
+    if (!plan) return;
+
+    setIsLoading(true);
+    setSelectedPlan(planId);
+
+    try {
+      // 1. 나이스페이 SDK 확인
+      if (!window.AUTHNICE) {
+        console.log('SDK 재로드 시도...');
+        await loadNicepaySDK();
+      }
+
+      if (!window.AUTHNICE) {
+        throw new Error('결제 모듈을 불러올 수 없습니다. 페이지를 새로고침 해주세요.');
+      }
+
+      // 2. 나이스페이 빌링 설정 가져오기
+      const configResponse = await fetch(`${API_URL}/api/nicepay/billing/config`);
+      const config = await configResponse.json();
+
+      // 3. 주문 ID 생성
+      const orderId = `sub_${user.id.substring(0, 8)}_${Date.now()}`;
+
+      console.log('나이스페이 빌링 결제 요청:', {
+        clientId: config.client_id,
+        orderId,
+        amount: plan.price,
+      });
+
+      // 4. 나이스페이 빌링 결제창 호출
+      // returnUrl을 /api/nicepay-billing으로 설정 (빌링 전용 콜백)
+      const returnUrl = `${window.location.origin}/api/nicepay-billing`;
+
+      window.AUTHNICE.requestPay({
+        clientId: config.client_id,
+        method: 'card',
+        orderId: orderId,
+        amount: plan.price,
+        goodsName: `Autopic ${plan.name} 구독 (월간)`,
+        returnUrl: returnUrl,
+        mallReserved: JSON.stringify({ 
+          plan: planId, 
+          userId: user.id,
+          isAnnual: false,
+        }),
+        fnError: (result) => {
+          console.error('나이스페이 빌링 오류:', result);
+          if (!result.errorMsg?.includes('취소') && !result.msg?.includes('취소')) {
+            toast.error(result.msg || result.errorMsg || '결제 중 오류가 발생했습니다');
+          }
+          setIsLoading(false);
+          setSelectedPlan(null);
+        },
+      });
+
+    } catch (error: any) {
+      console.error('구독 결제 오류:', error);
+      toast.error(error.message || '결제 중 오류가 발생했습니다');
+      setIsLoading(false);
+      setSelectedPlan(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50">
       {/* 네비게이션 */}
@@ -277,184 +382,345 @@ function PricingPageContent() {
       <section className="pt-32 pb-8 md:pb-12 px-4 md:px-6">
         <div className="max-w-4xl mx-auto text-center">
           <span className="inline-block px-4 py-1.5 rounded-full border border-zinc-200 text-xs font-bold uppercase tracking-widest bg-white mb-6 text-zinc-500">
-            Credit Package
+            Pricing
           </span>
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-black tracking-tight mb-6">
-            크레딧<span className="text-[#87D039]"> 충전</span>
+            요금제<span className="text-[#87D039]"> 선택</span>
           </h1>
           <p className="text-lg md:text-xl text-zinc-500 max-w-2xl mx-auto">
-            구독 없이, 필요한 만큼만 충전<br className="md:hidden" />
-            크레딧은 무기한 유효합니다
+            필요에 맞는 요금제를 선택하세요<br className="md:hidden" />
+            크레딧 충전 또는 월 구독
           </p>
         </div>
       </section>
 
-      {/* 3가지 안내 */}
-      <section className="px-4 md:px-6 pb-8 md:pb-12">
-        <div className="max-w-[1000px] mx-auto">
-          <div className="bg-white rounded-xl md:rounded-2xl border border-zinc-200 p-4 md:p-6">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-0 md:divide-x divide-zinc-200">
-              <div className="md:px-6 md:first:pl-0 md:last:pr-0">
-                <h4 className="text-xs md:text-sm font-bold text-zinc-900 mb-2 md:mb-3">상품 1개 처리 비용</h4>
-                <div className="space-y-1.5 md:space-y-2 text-xs md:text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 md:gap-2 text-zinc-600"><Zap size={12} /> Flash (빠름)</span>
-                    <span className="font-bold">1 크레딧</span>
+      {/* 탭 선택 */}
+      <section className="px-4 md:px-6 pb-8">
+        <div className="max-w-[600px] mx-auto">
+          <div className="bg-white rounded-xl p-1.5 border border-zinc-200 flex">
+            <button
+              onClick={() => setActiveTab('credit')}
+              className={`flex-1 py-3 px-4 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2 ${
+                activeTab === 'credit'
+                  ? 'bg-zinc-900 text-white'
+                  : 'text-zinc-500 hover:text-zinc-900'
+              }`}
+            >
+              <CreditCard size={16} />
+              크레딧 충전
+            </button>
+            <button
+              onClick={() => setActiveTab('subscription')}
+              className={`flex-1 py-3 px-4 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2 ${
+                activeTab === 'subscription'
+                  ? 'bg-zinc-900 text-white'
+                  : 'text-zinc-500 hover:text-zinc-900'
+              }`}
+            >
+              <RefreshCw size={16} />
+              월 구독
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* 크레딧 충전 탭 */}
+      {activeTab === 'credit' && (
+        <>
+          {/* 3가지 안내 */}
+          <section className="px-4 md:px-6 pb-8 md:pb-12">
+            <div className="max-w-[1000px] mx-auto">
+              <div className="bg-white rounded-xl md:rounded-2xl border border-zinc-200 p-4 md:p-6">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-0 md:divide-x divide-zinc-200">
+                  <div className="md:px-6 md:first:pl-0 md:last:pr-0">
+                    <h4 className="text-xs md:text-sm font-bold text-zinc-900 mb-2 md:mb-3">상품 1개 처리 비용</h4>
+                    <div className="space-y-1.5 md:space-y-2 text-xs md:text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 md:gap-2 text-zinc-600"><Zap size={12} /> Flash (빠름)</span>
+                        <span className="font-bold">1 크레딧</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 md:gap-2 text-zinc-600"><Crown size={12} /> Pro (고품질)</span>
+                        <span className="font-bold">3 크레딧</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 md:gap-2 text-zinc-600"><Crown size={12} /> Pro (고품질)</span>
-                    <span className="font-bold">3 크레딧</span>
+                  <div className="md:px-6 pt-4 md:pt-0 border-t md:border-t-0 border-zinc-200">
+                    <h4 className="text-xs md:text-sm font-bold text-zinc-900 mb-2 md:mb-3">웹 vs 설치형</h4>
+                    <div className="space-y-1.5 md:space-y-2 text-xs md:text-sm">
+                      <div className="flex items-center gap-1.5 md:gap-2 text-zinc-600"><Globe size={12} /><span><strong>웹</strong> - 테스트, 미리보기</span></div>
+                      <div className="flex items-center gap-1.5 md:gap-2 text-zinc-600"><Monitor size={12} /><span><strong>설치형</strong> - 대량, 자동화</span></div>
+                    </div>
                   </div>
-                </div>
-              </div>
-              <div className="md:px-6 pt-4 md:pt-0 border-t md:border-t-0 border-zinc-200">
-                <h4 className="text-xs md:text-sm font-bold text-zinc-900 mb-2 md:mb-3">웹 vs 설치형</h4>
-                <div className="space-y-1.5 md:space-y-2 text-xs md:text-sm">
-                  <div className="flex items-center gap-1.5 md:gap-2 text-zinc-600"><Globe size={12} /><span><strong>웹</strong> - 테스트, 미리보기</span></div>
-                  <div className="flex items-center gap-1.5 md:gap-2 text-zinc-600"><Monitor size={12} /><span><strong>설치형</strong> - 대량, 자동화</span></div>
-                </div>
-              </div>
-              <div className="md:px-6 pt-4 md:pt-0 border-t md:border-t-0 border-zinc-200">
-                <h4 className="text-xs md:text-sm font-bold text-zinc-900 mb-2 md:mb-3">크레딧 특징</h4>
-                <div className="space-y-1.5 md:space-y-2 text-xs md:text-sm text-zinc-600">
-                  <div className="flex items-center gap-1.5 md:gap-2"><Check size={12} className="text-[#87D039]" />기간 제한 없음</div>
-                  <div className="flex items-center gap-1.5 md:gap-2"><Check size={12} className="text-[#87D039]" />웹 + 설치형 모두 사용</div>
+                  <div className="md:px-6 pt-4 md:pt-0 border-t md:border-t-0 border-zinc-200">
+                    <h4 className="text-xs md:text-sm font-bold text-zinc-900 mb-2 md:mb-3">크레딧 특징</h4>
+                    <div className="space-y-1.5 md:space-y-2 text-xs md:text-sm text-zinc-600">
+                      <div className="flex items-center gap-1.5 md:gap-2"><Check size={12} className="text-[#87D039]" />기간 제한 없음</div>
+                      <div className="flex items-center gap-1.5 md:gap-2"><Check size={12} className="text-[#87D039]" />웹 + 설치형 모두 사용</div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
+          </section>
 
-      {/* 3D 캐러셀 슬라이드 */}
-      <section className="pb-8 md:pb-12">
-        <div 
-          className="relative h-[480px] md:h-[520px] mb-6 md:mb-8"
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          ref={sliderRef}
-        >
-          {/* Navigation Arrows */}
-          <button onClick={prevSlide} disabled={currentSlide === 0}
-            className={`hidden md:flex absolute left-4 md:left-8 top-1/2 -translate-y-1/2 w-12 h-12 bg-white border border-zinc-200 rounded-full items-center justify-center transition-all z-40 shadow-lg ${currentSlide === 0 ? 'opacity-30' : 'hover:scale-110'}`}>
-            <ChevronLeft size={24} />
-          </button>
-          <button onClick={nextSlide} disabled={currentSlide === CREDIT_PACKAGES.length - 1}
-            className={`hidden md:flex absolute right-4 md:right-8 top-1/2 -translate-y-1/2 w-12 h-12 bg-white border border-zinc-200 rounded-full items-center justify-center transition-all z-40 shadow-lg ${currentSlide === CREDIT_PACKAGES.length - 1 ? 'opacity-30' : 'hover:scale-110'}`}>
-            <ChevronRight size={24} />
-          </button>
+          {/* 3D 캐러셀 슬라이드 */}
+          <section className="pb-8 md:pb-12">
+            <div 
+              className="relative h-[480px] md:h-[520px] mb-6 md:mb-8"
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              ref={sliderRef}
+            >
+              {/* Navigation Arrows */}
+              <button onClick={prevSlide} disabled={currentSlide === 0}
+                className={`hidden md:flex absolute left-4 md:left-8 top-1/2 -translate-y-1/2 w-12 h-12 bg-white border border-zinc-200 rounded-full items-center justify-center transition-all z-40 shadow-lg ${currentSlide === 0 ? 'opacity-30' : 'hover:scale-110'}`}>
+                <ChevronLeft size={24} />
+              </button>
+              <button onClick={nextSlide} disabled={currentSlide === CREDIT_PACKAGES.length - 1}
+                className={`hidden md:flex absolute right-4 md:right-8 top-1/2 -translate-y-1/2 w-12 h-12 bg-white border border-zinc-200 rounded-full items-center justify-center transition-all z-40 shadow-lg ${currentSlide === CREDIT_PACKAGES.length - 1 ? 'opacity-30' : 'hover:scale-110'}`}>
+                <ChevronRight size={24} />
+              </button>
 
-          {/* Cards */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            {CREDIT_PACKAGES.map((pack, idx) => {
-              const diff = idx - currentSlide;
-              let style: React.CSSProperties;
-              
-              if (diff === 0) style = { transform: 'translateX(0) scale(1)', opacity: 1, zIndex: 30 };
-              else if (diff === -1) style = { transform: 'translateX(-70%) scale(0.85)', opacity: 0.5, zIndex: 20 };
-              else if (diff === 1) style = { transform: 'translateX(70%) scale(0.85)', opacity: 0.5, zIndex: 20 };
-              else if (diff === -2) style = { transform: 'translateX(-130%) scale(0.7)', opacity: 0, zIndex: 10 };
-              else if (diff === 2) style = { transform: 'translateX(130%) scale(0.7)', opacity: 0, zIndex: 10 };
-              else style = { transform: 'translateX(0) scale(0.5)', opacity: 0, zIndex: 0 };
+              {/* Cards */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                {CREDIT_PACKAGES.map((pack, idx) => {
+                  const diff = idx - currentSlide;
+                  let style: React.CSSProperties;
+                  
+                  if (diff === 0) style = { transform: 'translateX(0) scale(1)', opacity: 1, zIndex: 30 };
+                  else if (diff === -1) style = { transform: 'translateX(-70%) scale(0.85)', opacity: 0.5, zIndex: 20 };
+                  else if (diff === 1) style = { transform: 'translateX(70%) scale(0.85)', opacity: 0.5, zIndex: 20 };
+                  else if (diff === -2) style = { transform: 'translateX(-130%) scale(0.7)', opacity: 0, zIndex: 10 };
+                  else if (diff === 2) style = { transform: 'translateX(130%) scale(0.7)', opacity: 0, zIndex: 10 };
+                  else style = { transform: 'translateX(0) scale(0.5)', opacity: 0, zIndex: 0 };
 
-              const isCenter = idx === currentSlide;
-              const isBest = (pack as any).best;
-              
-              return (
-                <div key={idx} className="absolute w-[280px] md:w-[320px] transition-all duration-500 ease-out cursor-pointer" style={style} onClick={() => setCurrentSlide(idx)}>
-                  <div className={`p-6 md:p-8 rounded-2xl md:rounded-3xl flex flex-col relative ${
-                    pack.popular && isCenter ? 'bg-zinc-900 text-white shadow-2xl' 
-                    : isBest && isCenter ? 'bg-gradient-to-br from-purple-600 to-purple-800 text-white shadow-2xl'
-                    : isCenter ? 'bg-white border-2 border-zinc-900 shadow-2xl'
-                    : 'bg-white border border-zinc-200 shadow-lg'
-                  }`}>
-                    
-                    {/* 할인 배지 (Light 제외) */}
-                    {pack.discount > 0 && isCenter && !pack.popular && !isBest && (
-                      <div className="absolute -top-3 -right-2 bg-red-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-full shadow-lg">
-                        {pack.discount}% OFF
-                      </div>
-                    )}
-                    
-                    {/* 메인 배지 */}
-                    {pack.popular && (
-                      <div className="flex justify-center mb-2">
-                        <span className="bg-[#87D039] text-black text-[10px] font-bold px-3 py-1 rounded-full">🔥 가장 인기</span>
-                      </div>
-                    )}
-                    {isBest && (
-                      <div className="flex justify-center mb-2">
-                        <span className="bg-yellow-400 text-black text-[10px] font-bold px-3 py-1 rounded-full">💎 최고 가성비</span>
-                      </div>
-                    )}
-                    
-                    <div className="text-center mb-4">
-                      <h3 className="text-lg md:text-xl font-bold mb-1">{pack.name}</h3>
-                      <p className={`text-xs md:text-sm ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}>{pack.desc}</p>
-                    </div>
-
-                    <div className="text-center mb-4">
-                      <div className="text-3xl md:text-4xl font-bold mb-1">₩{formatPrice(pack.price)}</div>
-                      <p className={`text-xs md:text-sm ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}>
-                        {formatPrice(pack.credits)} 크레딧
-                      </p>
-                      <p className={`text-[10px] md:text-xs mt-1 ${(pack.popular || isBest) && isCenter ? 'text-zinc-400' : 'text-zinc-400'}`}>
-                        크레딧당 ₩{pack.pricePerCredit}
-                        {pack.discount > 0 && (
-                          <span className={`ml-1 font-bold ${(pack.popular || isBest) && isCenter ? 'text-[#87D039]' : 'text-red-500'}`}>
-                            ({pack.discount}% 할인)
-                          </span>
+                  const isCenter = idx === currentSlide;
+                  const isBest = (pack as any).best;
+                  
+                  return (
+                    <div key={idx} className="absolute w-[280px] md:w-[320px] transition-all duration-500 ease-out cursor-pointer" style={style} onClick={() => setCurrentSlide(idx)}>
+                      <div className={`p-6 md:p-8 rounded-2xl md:rounded-3xl flex flex-col relative ${
+                        pack.popular && isCenter ? 'bg-zinc-900 text-white shadow-2xl' 
+                        : isBest && isCenter ? 'bg-gradient-to-br from-purple-600 to-purple-800 text-white shadow-2xl'
+                        : isCenter ? 'bg-white border-2 border-zinc-900 shadow-2xl'
+                        : 'bg-white border border-zinc-200 shadow-lg'
+                      }`}>
+                        
+                        {/* 할인 배지 (Light 제외) */}
+                        {pack.discount > 0 && isCenter && !pack.popular && !isBest && (
+                          <div className="absolute -top-3 -right-2 bg-red-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-full shadow-lg">
+                            {pack.discount}% OFF
+                          </div>
                         )}
-                      </p>
-                    </div>
+                        
+                        {/* 메인 배지 */}
+                        {pack.popular && (
+                          <div className="flex justify-center mb-2">
+                            <span className="bg-[#87D039] text-black text-[10px] font-bold px-3 py-1 rounded-full">🔥 가장 인기</span>
+                          </div>
+                        )}
+                        {isBest && (
+                          <div className="flex justify-center mb-2">
+                            <span className="bg-yellow-400 text-black text-[10px] font-bold px-3 py-1 rounded-full">💎 최고 가성비</span>
+                          </div>
+                        )}
+                        
+                        <div className="text-center mb-4">
+                          <h3 className="text-lg md:text-xl font-bold mb-1">{pack.name}</h3>
+                          <p className={`text-xs md:text-sm ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}>{pack.desc}</p>
+                        </div>
 
-                    <div className={`rounded-xl p-3 md:p-4 mb-4 ${(pack.popular || isBest) && isCenter ? 'bg-white/10' : 'bg-zinc-50'}`}>
-                      <div className="space-y-1.5 md:space-y-2 text-xs md:text-sm">
-                        <div className="flex items-center justify-between">
-                          <span className={`flex items-center gap-1.5 ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}>
-                            <Zap size={10} /> Flash
-                          </span>
-                          <span className="font-bold">{formatPrice(pack.flashCount)}회</span>
+                        <div className="text-center mb-4">
+                          <div className="text-3xl md:text-4xl font-bold mb-1">₩{formatPrice(pack.price)}</div>
+                          <p className={`text-xs md:text-sm ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                            {formatPrice(pack.credits)} 크레딧
+                          </p>
+                          <p className={`text-[10px] md:text-xs mt-1 ${(pack.popular || isBest) && isCenter ? 'text-zinc-400' : 'text-zinc-400'}`}>
+                            크레딧당 ₩{pack.pricePerCredit}
+                            {pack.discount > 0 && (
+                              <span className={`ml-1 font-bold ${(pack.popular || isBest) && isCenter ? 'text-[#87D039]' : 'text-red-500'}`}>
+                                ({pack.discount}% 할인)
+                              </span>
+                            )}
+                          </p>
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span className={`flex items-center gap-1.5 ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}>
-                            <Crown size={10} /> Pro
-                          </span>
-                          <span className="font-bold">{formatPrice(pack.proCount)}회</span>
+
+                        <div className={`rounded-xl p-3 md:p-4 mb-4 ${(pack.popular || isBest) && isCenter ? 'bg-white/10' : 'bg-zinc-50'}`}>
+                          <div className="space-y-1.5 md:space-y-2 text-xs md:text-sm">
+                            <div className="flex items-center justify-between">
+                              <span className={`flex items-center gap-1.5 ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                                <Zap size={10} /> Flash
+                              </span>
+                              <span className="font-bold">{formatPrice(pack.flashCount)}회</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className={`flex items-center gap-1.5 ${(pack.popular || isBest) && isCenter ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                                <Crown size={10} /> Pro
+                              </span>
+                              <span className="font-bold">{formatPrice(pack.proCount)}회</span>
+                            </div>
+                          </div>
                         </div>
+
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleCreditPayment(pack.id); }}
+                          disabled={isLoading && selectedPlan === pack.id}
+                          className={`w-full py-3 md:py-3.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${
+                            pack.popular && isCenter ? 'bg-[#87D039] text-black hover:bg-[#9AE045]'
+                            : isBest && isCenter ? 'bg-yellow-400 text-black hover:bg-yellow-300'
+                            : isCenter ? 'bg-zinc-900 text-white hover:bg-black'
+                            : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                          }`}
+                        >
+                          {isLoading && selectedPlan === pack.id ? '처리 중...' : '구매하기'}
+                        </button>
                       </div>
                     </div>
+                  );
+                })}
+              </div>
+            </div>
 
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handlePayment(pack.id); }}
-                      disabled={isLoading && selectedPlan === pack.id}
-                      className={`w-full py-3 md:py-3.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${
-                        pack.popular && isCenter ? 'bg-[#87D039] text-black hover:bg-[#9AE045]'
-                        : isBest && isCenter ? 'bg-yellow-400 text-black hover:bg-yellow-300'
-                        : isCenter ? 'bg-zinc-900 text-white hover:bg-black'
-                        : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-                      }`}
-                    >
-                      {isLoading && selectedPlan === pack.id ? '처리 중...' : '구매하기'}
-                    </button>
+            <p className="text-center text-xs text-zinc-400 mb-4 md:hidden">← 좌우로 스와이프하세요 →</p>
+
+            <div className="flex justify-center gap-1.5 md:gap-2 mb-8">
+              {CREDIT_PACKAGES.map((_, idx) => (
+                <button key={idx} onClick={() => setCurrentSlide(idx)}
+                  className={`h-1.5 md:h-2 rounded-full transition-all duration-300 ${currentSlide === idx ? 'bg-zinc-900 w-6 md:w-8' : 'bg-zinc-300 w-1.5 md:w-2'}`}
+                />
+              ))}
+            </div>
+          </section>
+        </>
+      )}
+
+      {/* 구독 탭 */}
+      {activeTab === 'subscription' && (
+        <>
+          {/* 구독 안내 */}
+          <section className="px-4 md:px-6 pb-8 md:pb-12">
+            <div className="max-w-[1000px] mx-auto">
+              <div className="bg-white rounded-xl md:rounded-2xl border border-zinc-200 p-4 md:p-6">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-0 md:divide-x divide-zinc-200">
+                  <div className="md:px-6 md:first:pl-0 md:last:pr-0">
+                    <h4 className="text-xs md:text-sm font-bold text-zinc-900 mb-2 md:mb-3">월간 리셋형</h4>
+                    <div className="space-y-1.5 md:space-y-2 text-xs md:text-sm text-zinc-600">
+                      <div className="flex items-center gap-1.5"><RefreshCw size={12} className="text-[#87D039]" />매월 크레딧 새로 지급</div>
+                      <div className="flex items-center gap-1.5"><Check size={12} className="text-zinc-400" />미사용분 다음달 소멸</div>
+                    </div>
+                  </div>
+                  <div className="md:px-6 pt-4 md:pt-0 border-t md:border-t-0 border-zinc-200">
+                    <h4 className="text-xs md:text-sm font-bold text-zinc-900 mb-2 md:mb-3">자동 결제</h4>
+                    <div className="space-y-1.5 md:space-y-2 text-xs md:text-sm text-zinc-600">
+                      <div className="flex items-center gap-1.5"><CreditCard size={12} className="text-[#87D039]" />카드 등록 후 자동 결제</div>
+                      <div className="flex items-center gap-1.5"><Check size={12} className="text-zinc-400" />언제든 해지 가능</div>
+                    </div>
+                  </div>
+                  <div className="md:px-6 pt-4 md:pt-0 border-t md:border-t-0 border-zinc-200">
+                    <h4 className="text-xs md:text-sm font-bold text-zinc-900 mb-2 md:mb-3">구독 혜택</h4>
+                    <div className="space-y-1.5 md:space-y-2 text-xs md:text-sm text-zinc-600">
+                      <div className="flex items-center gap-1.5"><Check size={12} className="text-[#87D039]" />우선 처리</div>
+                      <div className="flex items-center gap-1.5"><Check size={12} className="text-[#87D039]" />설치형 프로그램 (Basic)</div>
+                    </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </div>
+              </div>
+            </div>
+          </section>
 
-        <p className="text-center text-xs text-zinc-400 mb-4 md:hidden">← 좌우로 스와이프하세요 →</p>
+          {/* 구독 플랜 카드 */}
+          <section className="px-4 md:px-6 pb-12">
+            <div className="max-w-[800px] mx-auto">
+              <div className="grid md:grid-cols-2 gap-6">
+                {SUBSCRIPTION_PLANS.map((plan) => (
+                  <div 
+                    key={plan.id}
+                    className={`relative rounded-2xl p-6 md:p-8 ${
+                      plan.popular 
+                        ? 'bg-zinc-900 text-white border-2 border-[#87D039]' 
+                        : 'bg-white border-2 border-zinc-200'
+                    }`}
+                  >
+                    {plan.popular && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                        <span className="bg-[#87D039] text-black text-xs font-bold px-4 py-1 rounded-full">
+                          🔥 추천
+                        </span>
+                      </div>
+                    )}
 
-        <div className="flex justify-center gap-1.5 md:gap-2 mb-8">
-          {CREDIT_PACKAGES.map((_, idx) => (
-            <button key={idx} onClick={() => setCurrentSlide(idx)}
-              className={`h-1.5 md:h-2 rounded-full transition-all duration-300 ${currentSlide === idx ? 'bg-zinc-900 w-6 md:w-8' : 'bg-zinc-300 w-1.5 md:w-2'}`}
-            />
-          ))}
-        </div>
-      </section>
+                    <div className="text-center mb-6">
+                      <h3 className="text-xl font-bold mb-1">{plan.name}</h3>
+                      <p className={`text-sm ${plan.popular ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                        {plan.desc}
+                      </p>
+                    </div>
+
+                    <div className="text-center mb-6">
+                      <div className="text-4xl font-bold mb-1">
+                        ₩{formatPrice(plan.price)}
+                        <span className={`text-lg font-normal ${plan.popular ? 'text-zinc-400' : 'text-zinc-500'}`}>/월</span>
+                      </div>
+                      <p className={`text-sm ${plan.popular ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                        매월 {formatPrice(plan.credits)} 크레딧
+                      </p>
+                    </div>
+
+                    <div className={`rounded-xl p-4 mb-6 ${plan.popular ? 'bg-white/10' : 'bg-zinc-50'}`}>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center justify-between">
+                          <span className={`flex items-center gap-2 ${plan.popular ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                            <Zap size={14} /> Flash
+                          </span>
+                          <span className="font-bold">{formatPrice(plan.flashCount)}회/월</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className={`flex items-center gap-2 ${plan.popular ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                            <Crown size={14} /> Pro
+                          </span>
+                          <span className="font-bold">{formatPrice(plan.proCount)}회/월</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <ul className="space-y-2 mb-6">
+                      {plan.features.map((feature, idx) => (
+                        <li key={idx} className="flex items-center gap-2 text-sm">
+                          <Check size={14} className="text-[#87D039] flex-shrink-0" />
+                          <span className={plan.popular ? 'text-zinc-200' : 'text-zinc-600'}>
+                            {feature}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <button
+                      onClick={() => handleSubscriptionPayment(plan.id)}
+                      disabled={isLoading && selectedPlan === plan.id}
+                      className={`w-full py-3.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${
+                        plan.popular 
+                          ? 'bg-[#87D039] text-black hover:bg-[#9AE045]' 
+                          : 'bg-zinc-900 text-white hover:bg-black'
+                      }`}
+                    >
+                      {isLoading && selectedPlan === plan.id ? '처리 중...' : '구독 시작'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* 구독 안내 문구 */}
+              <div className="mt-8 text-center">
+                <p className="text-xs text-zinc-400">
+                  구독은 매월 자동 갱신됩니다. 언제든 마이페이지에서 해지할 수 있습니다.
+                </p>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
 
       {/* 설치형 안내 */}
       <section className="px-4 md:px-6 pb-12">
@@ -488,13 +754,21 @@ function PricingPageContent() {
             </div>
             <div className="bg-white rounded-2xl p-6 border border-zinc-200">
               <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center mb-4"><Clock size={24} className="text-green-500" /></div>
-              <h4 className="font-bold mb-2">무기한 유효</h4>
-              <p className="text-sm text-zinc-500">구매한 크레딧은 기간 제한 없이 사용 가능</p>
+              <h4 className="font-bold mb-2">{activeTab === 'credit' ? '무기한 유효' : '자유로운 해지'}</h4>
+              <p className="text-sm text-zinc-500">
+                {activeTab === 'credit' 
+                  ? '구매한 크레딧은 기간 제한 없이 사용 가능' 
+                  : '언제든 마이페이지에서 해지 가능'}
+              </p>
             </div>
             <div className="bg-white rounded-2xl p-6 border border-zinc-200">
               <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center mb-4"><Download size={24} className="text-purple-500" /></div>
-              <h4 className="font-bold mb-2">즉시 충전</h4>
-              <p className="text-sm text-zinc-500">결제 완료 후 크레딧이 즉시 충전됩니다</p>
+              <h4 className="font-bold mb-2">즉시 {activeTab === 'credit' ? '충전' : '시작'}</h4>
+              <p className="text-sm text-zinc-500">
+                {activeTab === 'credit' 
+                  ? '결제 완료 후 크레딧이 즉시 충전됩니다' 
+                  : '결제 완료 후 바로 구독이 시작됩니다'}
+              </p>
             </div>
           </div>
 

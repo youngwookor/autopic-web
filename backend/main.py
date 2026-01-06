@@ -2877,6 +2877,500 @@ async def get_billing_config():
     }
 
 
+# ============================================================================
+# 나이스페이 빌링(정기결제) API
+# ============================================================================
+
+class NicepayBillingRequest(BaseModel):
+    user_id: str
+    plan: str
+    bid: str  # 빌키 (빌링키)
+    order_id: str
+    is_annual: bool = False
+
+
+class NicepayBillingIssueRequest(BaseModel):
+    user_id: str
+    plan: str
+    auth_result_code: str  # 인증 결과 코드
+    tid: str  # 거래 ID
+    order_id: str
+    is_annual: bool = False
+
+
+@app.get("/api/nicepay/billing/config")
+async def get_nicepay_billing_config():
+    """나이스페이 빌링 설정 반환"""
+    return {
+        "client_id": NICEPAY_CLIENT_ID,
+        "plans": SUBSCRIPTION_PLANS,
+    }
+
+
+@app.post("/api/nicepay/billing/subscribe")
+async def nicepay_billing_subscribe(request: NicepayBillingIssueRequest):
+    """
+    나이스페이 빌키 발급 + 첫 결제 + 구독 생성 (통합 API)
+    
+    1. 결제창 인증 완료 후 빌키 발급
+    2. 빌키로 첫 결제 실행
+    3. 구독 생성
+    """
+    if request.plan not in SUBSCRIPTION_PLANS:
+        return {"success": False, "error": "잘못된 플랜입니다"}
+    
+    try:
+        plan_info = SUBSCRIPTION_PLANS[request.plan]
+        
+        # 1. 이미 활성 구독이 있는지 확인
+        try:
+            existing = (
+                supabase.table("subscriptions")
+                .select("id")
+                .eq("user_id", request.user_id)
+                .eq("status", "active")
+                .execute()
+            )
+            if existing.data:
+                return {"success": False, "error": "이미 활성화된 구독이 있습니다"}
+        except Exception:
+            pass
+        
+        # 2. 나이스페이 인증 확인 및 빌키 발급
+        auth_string = base64.b64encode(f"{NICEPAY_CLIENT_ID}:{NICEPAY_SECRET_KEY}".encode()).decode()
+        
+        # 결제창 인증 성공 시 TID로 빌키 발급 요청
+        async with httpx.AsyncClient() as client:
+            billing_response = await client.post(
+                f"https://api.nicepay.co.kr/v1/subscribe/{request.tid}",
+                headers={
+                    "Authorization": f"Basic {auth_string}",
+                    "Content-Type": "application/json",
+                },
+                json={},  # 빌키 발급 요청 (인증 TID 기반)
+            )
+        
+        if billing_response.status_code != 200:
+            error_data = billing_response.json() if billing_response.text else {}
+            print(f"빌키 발급 오류: {billing_response.status_code}, {billing_response.text}")
+            return {"success": False, "error": error_data.get("resultMsg", "빌키 발급 실패")}
+        
+        billing_data = billing_response.json()
+        
+        # 결과 코드 확인
+        if billing_data.get("resultCode") != "0000":
+            return {"success": False, "error": billing_data.get("resultMsg", "빌키 발급 실패")}
+        
+        bid = billing_data.get("bid")  # 빌키
+        if not bid:
+            return {"success": False, "error": "빌키가 발급되지 않았습니다"}
+        
+        # 3. 첫 결제 실행 (빌키 승인)
+        amount = plan_info["price"]
+        months = 1
+        if request.is_annual:
+            amount = int(plan_info["price"] * 0.8 * 12)  # 연간 20% 할인
+            months = 12
+        
+        payment_order_id = f"sub_{request.user_id[:8]}_{int(datetime.now().timestamp())}"
+        order_name = f"AUTOPIC {plan_info['name']} 구독"
+        if request.is_annual:
+            order_name += " (연간)"
+        
+        async with httpx.AsyncClient() as client:
+            payment_response = await client.post(
+                f"https://api.nicepay.co.kr/v1/subscribe/{bid}/payments",
+                headers={
+                    "Authorization": f"Basic {auth_string}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "orderId": payment_order_id,
+                    "amount": amount,
+                    "goodsName": order_name,
+                    "cardQuota": 0,  # 일시불
+                    "useShopInterest": False,
+                },
+            )
+        
+        if payment_response.status_code != 200:
+            error_data = payment_response.json() if payment_response.text else {}
+            print(f"빌키 승인 오류: {payment_response.status_code}, {payment_response.text}")
+            return {"success": False, "error": error_data.get("resultMsg", "결제 실패")}
+        
+        payment_data = payment_response.json()
+        
+        if payment_data.get("resultCode") != "0000":
+            return {"success": False, "error": payment_data.get("resultMsg", "결제 실패")}
+        
+        # 4. 구독 생성
+        billing_period_end = (datetime.now() + timedelta(days=30 * months)).isoformat()
+        credit_period_end = (datetime.now() + timedelta(days=30)).isoformat()
+        
+        subscription_data = {
+            "user_id": request.user_id,
+            "plan": request.plan,
+            "plan_name": plan_info["name"],
+            "monthly_credits": plan_info["credits"],
+            "price": plan_info["price"],
+            "billing_key": bid,  # 나이스페이 빌키
+            "customer_key": request.user_id,  # user_id를 customer_key로 사용
+            "status": "active",
+            "current_period_start": datetime.now().isoformat(),
+            "current_period_end": billing_period_end,
+            "next_billing_date": billing_period_end,
+            "last_credit_granted_at": datetime.now().isoformat(),
+            "credits_granted_this_period": plan_info["credits"],
+        }
+        
+        insert_result = supabase.table("subscriptions").insert(subscription_data).execute()
+        
+        if not insert_result.data:
+            return {"success": False, "error": "구독 생성 실패"}
+        
+        subscription_id = insert_result.data[0]["id"]
+        
+        # 5. 프로필 tier 업데이트
+        supabase.table("profiles").update({"tier": request.plan}).eq(
+            "id", request.user_id
+        ).execute()
+        
+        # 6. 크레딧 추가 (월간 리셋형)
+        total_credits = plan_info["credits"]
+        await add_credits(request.user_id, total_credits)
+        
+        # 7. 결제 기록
+        supabase.table("payments").insert({
+            "user_id": request.user_id,
+            "order_id": payment_order_id,
+            "amount": amount,
+            "credits": total_credits,
+            "status": "completed",
+            "payment_key": payment_data.get("tid"),
+            "method": payment_data.get("payMethod", "card"),
+            "paid_at": datetime.now().isoformat(),
+        }).execute()
+        
+        # 8. 히스토리 기록
+        try:
+            supabase.table("subscription_history").insert({
+                "subscription_id": subscription_id,
+                "user_id": request.user_id,
+                "event_type": "created",
+                "plan": request.plan,
+                "amount": amount,
+                "credits_granted": total_credits,
+                "payment_key": payment_data.get("tid"),
+                "metadata": {"is_annual": request.is_annual, "bid": bid},
+            }).execute()
+        except Exception:
+            pass
+        
+        return {
+            "success": True,
+            "subscription_id": subscription_id,
+            "plan": request.plan,
+            "plan_name": plan_info["name"],
+            "credits_granted": total_credits,
+            "amount_paid": amount,
+            "next_billing_date": billing_period_end,
+            "card_number": billing_data.get("cardNo", ""),
+        }
+        
+    except Exception as e:
+        print(f"구독 결제 오류: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/nicepay/billing/renew")
+async def nicepay_billing_renew(subscription_id: str):
+    """
+    나이스페이 빌키로 정기 결제 갱신
+    (매월 크론잡에서 호출)
+    """
+    try:
+        # 구독 정보 조회
+        subscription_result = (
+            supabase.table("subscriptions")
+            .select("*")
+            .eq("id", subscription_id)
+            .single()
+            .execute()
+        )
+        
+        if not subscription_result.data:
+            return {"success": False, "error": "구독을 찾을 수 없습니다"}
+        
+        subscription = subscription_result.data
+        bid = subscription.get("billing_key")
+        
+        if not bid:
+            return {"success": False, "error": "빌키가 없습니다"}
+        
+        # 취소 예정인 경우
+        if subscription.get("cancel_at_period_end"):
+            supabase.table("subscriptions").update({"status": "expired"}).eq(
+                "id", subscription_id
+            ).execute()
+            supabase.table("profiles").update({"tier": "free"}).eq(
+                "id", subscription["user_id"]
+            ).execute()
+            return {"success": True, "status": "expired"}
+        
+        # 결제 실행
+        plan = subscription.get("plan")
+        plan_info = SUBSCRIPTION_PLANS.get(plan)
+        if not plan_info:
+            return {"success": False, "error": "플랜 정보가 없습니다"}
+        
+        amount = plan_info["price"]
+        order_id = f"renew_{subscription['user_id'][:8]}_{int(datetime.now().timestamp())}"
+        order_name = f"AUTOPIC {plan_info['name']} 구독 갱신"
+        
+        auth_string = base64.b64encode(f"{NICEPAY_CLIENT_ID}:{NICEPAY_SECRET_KEY}".encode()).decode()
+        
+        async with httpx.AsyncClient() as client:
+            payment_response = await client.post(
+                f"https://api.nicepay.co.kr/v1/subscribe/{bid}/payments",
+                headers={
+                    "Authorization": f"Basic {auth_string}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "orderId": order_id,
+                    "amount": amount,
+                    "goodsName": order_name,
+                    "cardQuota": 0,
+                    "useShopInterest": False,
+                },
+            )
+        
+        if payment_response.status_code != 200:
+            # 결제 실패 처리
+            supabase.table("subscriptions").update({
+                "status": "payment_failed",
+            }).eq("id", subscription_id).execute()
+            return {"success": False, "error": "결제 실패"}
+        
+        payment_data = payment_response.json()
+        
+        if payment_data.get("resultCode") != "0000":
+            supabase.table("subscriptions").update({
+                "status": "payment_failed",
+            }).eq("id", subscription_id).execute()
+            return {"success": False, "error": payment_data.get("resultMsg", "결제 실패")}
+        
+        # 구독 갱신
+        new_period_end = (
+            datetime.fromisoformat(subscription["current_period_end"].replace("Z", "+00:00"))
+            + timedelta(days=30)
+        ).isoformat()
+        
+        supabase.table("subscriptions").update({
+            "current_period_start": subscription["current_period_end"],
+            "current_period_end": new_period_end,
+            "next_billing_date": new_period_end,
+            "last_credit_granted_at": datetime.now().isoformat(),
+            "credits_granted_this_period": subscription["monthly_credits"],
+            "status": "active",
+        }).eq("id", subscription_id).execute()
+        
+        # 크레딧 리셋 (월간 리셋형)
+        supabase.table("profiles").update({
+            "credits": subscription["monthly_credits"]
+        }).eq("id", subscription["user_id"]).execute()
+        
+        # 결제 기록
+        supabase.table("payments").insert({
+            "user_id": subscription["user_id"],
+            "order_id": order_id,
+            "amount": amount,
+            "credits": subscription["monthly_credits"],
+            "status": "completed",
+            "payment_key": payment_data.get("tid"),
+            "method": payment_data.get("payMethod", "card"),
+            "paid_at": datetime.now().isoformat(),
+        }).execute()
+        
+        # 히스토리 기록
+        try:
+            supabase.table("subscription_history").insert({
+                "subscription_id": subscription_id,
+                "user_id": subscription["user_id"],
+                "event_type": "renewed",
+                "plan": plan,
+                "amount": amount,
+                "credits_granted": subscription["monthly_credits"],
+                "payment_key": payment_data.get("tid"),
+            }).execute()
+        except Exception:
+            pass
+        
+        return {
+            "success": True,
+            "subscription_id": subscription_id,
+            "status": "renewed",
+            "credits_granted": subscription["monthly_credits"],
+            "new_period_end": new_period_end,
+        }
+        
+    except Exception as e:
+        print(f"구독 갱신 오류: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/nicepay/billing/cancel")
+async def nicepay_billing_cancel(user_id: str, immediate: bool = False, reason: str = None):
+    """
+    나이스페이 구독 취소 (빌키 삭제)
+    """
+    try:
+        # 구독 정보 조회
+        subscription_result = (
+            supabase.table("subscriptions")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("status", "active")
+            .single()
+            .execute()
+        )
+        
+        if not subscription_result.data:
+            return {"success": False, "error": "활성화된 구독이 없습니다"}
+        
+        subscription = subscription_result.data
+        bid = subscription.get("billing_key")
+        
+        if immediate and bid:
+            # 즉시 취소: 빌키 삭제
+            auth_string = base64.b64encode(f"{NICEPAY_CLIENT_ID}:{NICEPAY_SECRET_KEY}".encode()).decode()
+            
+            async with httpx.AsyncClient() as client:
+                expire_response = await client.post(
+                    f"https://api.nicepay.co.kr/v1/subscribe/{bid}/expire",
+                    headers={
+                        "Authorization": f"Basic {auth_string}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "orderId": f"cancel_{user_id[:8]}_{int(datetime.now().timestamp())}",
+                    },
+                )
+            
+            # 빌키 삭제 결과와 관계없이 구독 취소 진행
+            if expire_response.status_code == 200:
+                expire_data = expire_response.json()
+                print(f"빌키 삭제 결과: {expire_data}")
+            
+            # 구독 즉시 취소
+            supabase.table("subscriptions").update({
+                "status": "cancelled",
+                "cancelled_at": datetime.now().isoformat(),
+                "cancellation_reason": reason,
+            }).eq("id", subscription["id"]).execute()
+            
+            # tier 업데이트
+            supabase.table("profiles").update({"tier": "free"}).eq(
+                "id", user_id
+            ).execute()
+        else:
+            # 기간 종료 후 취소
+            supabase.table("subscriptions").update({
+                "cancel_at_period_end": True,
+                "cancelled_at": datetime.now().isoformat(),
+                "cancellation_reason": reason,
+            }).eq("id", subscription["id"]).execute()
+        
+        # 히스토리 기록
+        try:
+            supabase.table("subscription_history").insert({
+                "subscription_id": subscription["id"],
+                "user_id": user_id,
+                "event_type": "cancelled",
+                "metadata": {"immediate": immediate, "reason": reason},
+            }).execute()
+        except Exception:
+            pass
+        
+        return {
+            "success": True,
+            "subscription_id": subscription["id"],
+            "immediate": immediate,
+            "period_end": subscription.get("current_period_end"),
+            "message": "즉시 취소되었습니다" if immediate else "구독 기간 종료 후 취소됩니다",
+        }
+        
+    except Exception as e:
+        print(f"구독 취소 오류: {e}")
+        return {"success": False, "error": str(e)}
+
+
+# 크론잡: 매일 갱신 대상 구독 결제 처리
+@app.post("/api/cron/subscription-billing")
+async def process_subscription_billing(
+    x_cleanup_secret: str = Header(None, alias="X-Cleanup-Secret")
+):
+    """
+    정기 결제 갱신 처리 (매일 크론잡으로 실행)
+    - next_billing_date가 오늘인 구독 대상
+    """
+    if x_cleanup_secret != CLEANUP_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        today = datetime.now().date().isoformat()
+        tomorrow = (datetime.now().date() + timedelta(days=1)).isoformat()
+        
+        # 오늘 갱신 대상 구독 조회
+        result = (
+            supabase.table("subscriptions")
+            .select("id, user_id, plan, billing_key, next_billing_date")
+            .eq("status", "active")
+            .gte("next_billing_date", today + "T00:00:00")
+            .lt("next_billing_date", tomorrow + "T00:00:00")
+            .execute()
+        )
+        
+        due_subscriptions = result.data or []
+        
+        if not due_subscriptions:
+            return {
+                "success": True,
+                "message": "갱신 대상 구독이 없습니다",
+                "processed_count": 0,
+            }
+        
+        success_count = 0
+        failed_count = 0
+        
+        for subscription in due_subscriptions:
+            try:
+                renew_result = await nicepay_billing_renew(subscription["id"])
+                if renew_result.get("success"):
+                    success_count += 1
+                else:
+                    failed_count += 1
+                    print(f"구독 갱신 실패 ({subscription['id']}): {renew_result.get('error')}")
+            except Exception as e:
+                failed_count += 1
+                print(f"구독 갱신 오류 ({subscription['id']}): {e}")
+        
+        return {
+            "success": True,
+            "message": f"{success_count}개 구독 갱신 완료, {failed_count}개 실패",
+            "processed_count": success_count,
+            "failed_count": failed_count,
+        }
+        
+    except Exception as e:
+        print(f"구독 갱신 크론잡 오류: {e}")
+        return {"success": False, "error": str(e)}
+
+
 @app.post("/api/subscription/cancel")
 async def cancel_subscription(request: SubscriptionCancelRequest):
     """구독 취소"""
