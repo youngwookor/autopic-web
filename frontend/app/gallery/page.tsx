@@ -18,13 +18,13 @@ import {
 
 // 카테고리 데이터
 const categories = [
-  { id: 'bag', name: '가방', nameEn: 'BAG', folder: '가방' },
-  { id: 'shoes', name: '신발', nameEn: 'SHOES', folder: '신발' },
-  { id: 'watch', name: '시계', nameEn: 'WATCH', folder: '시계' },
-  { id: 'clothing', name: '의류', nameEn: 'CLOTHING', folder: '의류' },
-  { id: 'jewelry', name: '쥬얼리', nameEn: 'JEWELRY', folder: '쥬얼리' },
-  { id: 'kids', name: '키즈', nameEn: 'KIDS', folder: '키즈' },
-  { id: 'accessory', name: '패션잡화', nameEn: 'ACCESSORY', folder: '패션잡화' },
+  { id: 'bag', name: '가방', nameEn: 'BAG', folder: 'BAG' },
+  { id: 'shoes', name: '신발', nameEn: 'SHOES', folder: 'SHOES' },
+  { id: 'watch', name: '시계', nameEn: 'WATCH', folder: 'WATCH' },
+  { id: 'clothing', name: '의류', nameEn: 'CLOTHING', folder: 'CLOTHING' },
+  { id: 'jewelry', name: '쥬얼리', nameEn: 'JEWELRY', folder: 'JEWELRY' },
+  { id: 'kids', name: '키즈', nameEn: 'KIDS', folder: 'KIDS' },
+  { id: 'accessory', name: '패션잡화', nameEn: 'ACCESSORY', folder: 'ACCESSORY' },
 ];
 
 // 비포/애프터 슬라이더
@@ -175,7 +175,7 @@ function CategoryShowcase({
         <div className="lg:col-span-5">
           <div className="sticky top-40">
             <BeforeAfterSlider
-              beforeImage={`/gallery/${category.folder}/0.jpg`}
+              beforeImage={`/gallery/${category.folder}/0.png`}
               afterImage={`/gallery/${category.folder}/${selectedImage}.png`}
               categoryName={category.name}
             />
