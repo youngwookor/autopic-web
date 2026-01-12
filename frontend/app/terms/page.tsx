@@ -9,14 +9,14 @@ export default function TermsPage() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 py-16 px-4">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">오토픽(AUTOPIC) 이용약관</h1>
+        <h1 className="text-3xl font-bold mb-8">듀엘로 이용약관</h1>
         
         <p className="text-zinc-400 mb-8">시행일: 2025년 1월 1일</p>
 
         <div className="space-y-8 text-zinc-300">
           <section>
             <h2 className="text-xl font-semibold text-white mb-4">제1조 (목적)</h2>
-            <p>본 약관은 오토픽(AUTOPIC)(이하 "회사")이 운영하는 웹사이트 및 애플리케이션을 통해 제공하는 AI 상품 이미지 생성 서비스 및 관련 제반 서비스(이하 "서비스")의 이용과 관련하여 회사와 이용자의 권리, 의무 및 책임 사항을 규정함을 목적으로 합니다.</p>
+            <p>본 약관은 듀엘로(이하 "회사")가 운영하는 오토픽(AUTOPIC) 웹사이트 및 애플리케이션을 통해 제공하는 AI 상품 이미지 생성 서비스 및 관련 제반 서비스(이하 "서비스")의 이용과 관련하여 회사와 이용자의 권리, 의무 및 책임 사항을 규정함을 목적으로 합니다.</p>
           </section>
 
           <section>
@@ -46,7 +46,7 @@ export default function TermsPage() {
               </div>
               <div>
                 <h3 className="font-medium text-zinc-200 mb-2">5. 결제 수단</h3>
-                <p className="text-zinc-400">신용카드 및 카카오페이, 네이버페이, 페이코, 토스페이에 한해 이용이 가능하며, 그 외의 간편결제 수단은 카드사 및 PG사 정책에 따라 이용이 제한됩니다.</p>
+                <p className="text-zinc-400">신용카드 일시불 결제만 가능합니다. 할부 결제, 간편결제, 가상계좌, 계좌이체 등 기타 결제 수단은 이용이 제한됩니다.</p>
               </div>
             </div>
           </section>
@@ -118,7 +118,7 @@ export default function TermsPage() {
               </div>
               <div>
                 <h3 className="font-medium text-zinc-200 mb-2">2. 환불 방법</h3>
-                <p className="text-zinc-400">환불은 반드시 결제가 이루어졌던 원결제 수단(카드 취소 등)으로 진행됩니다. 시스템상 원결제 취소가 불가능한 부득이한 경우에 한해 별도 정산 후 계좌 입금 처리됩니다.</p>
+                <p className="text-zinc-400">카드결제를 통한 구매 건의 환불은 원칙적으로 카드 매출 취소 환불을 통해서만 가능합니다. 환불은 반드시 결제가 이루어졌던 원결제 수단(카드 취소 등)으로 진행됩니다. 시스템상 원결제 취소가 불가능한 부득이한 경우에 한해 별도 정산 후 계좌 입금 처리됩니다.</p>
               </div>
               <div>
                 <h3 className="font-medium text-zinc-200 mb-2">3. 환불 불가</h3>

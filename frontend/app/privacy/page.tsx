@@ -14,7 +14,7 @@ export default function PrivacyPage() {
         <p className="text-zinc-400 mb-8">시행일: 2025년 1월 1일</p>
 
         <p className="text-zinc-300 mb-8">
-          <strong className="text-white">오토픽(AUTOPIC)</strong>은 안전한 서비스 제공을 위해 아래와 같이 개인정보를 수집 및 이용합니다.
+          <strong className="text-white">듀엘로</strong>(이하 "회사")는 오토픽(AUTOPIC) 서비스의 안전한 제공을 위해 아래와 같이 개인정보를 수집 및 이용합니다.
         </p>
 
         <div className="space-y-8 text-zinc-300">
